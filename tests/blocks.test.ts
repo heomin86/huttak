@@ -247,6 +247,26 @@ describe('layout wrappers that generate no box', () => {
       expect(isTypedTextSelection(field, '•••••••')).toBe(true);
     });
 
+    it('does not read a run of asterisks in body copy as a masked value', () => {
+      document.body.innerHTML = '<input id="search"><p id="copy">* * *</p>';
+      const field = document.querySelector('#search');
+      expect(isTypedTextSelection(field, '* * *')).toBe(false);
+    });
+
+    it('follows an open shadow root to the control holding the caret', () => {
+      document.body.innerHTML = '<my-search></my-search>';
+      const host = document.querySelector('my-search');
+      if (!host) throw new Error('missing host');
+      const input = document.createElement('input');
+      input.value = 'typed in a custom element';
+      host.attachShadow({ mode: 'open' }).append(input);
+      input.focus();
+
+      // `document.activeElement` stops at the host, so the host alone is not enough.
+      expect(document.activeElement).toBe(host);
+      expect(isTypedTextSelection(host, 'typed in a custom element')).toBe(true);
+    });
+
     it('leaves page prose alone when an empty field has focus', () => {
       document.body.innerHTML = '<input id="search"><p id="copy">Readable paragraph</p>';
       const field = document.querySelector('#search');

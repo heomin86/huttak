@@ -1,3 +1,11 @@
+/** A control the reader types into. The text in one is the reader's own, never page copy. */
+const FIELD_SELECTORS = [
+  'textarea',
+  'input',
+  'select',
+  '[contenteditable]:not([contenteditable="false"])',
+];
+
 const EXCLUDED_SELECTOR = [
   'pre',
   'code',
@@ -7,12 +15,9 @@ const EXCLUDED_SELECTOR = [
   'script',
   'style',
   'noscript',
-  'textarea',
-  'input',
-  'select',
+  ...FIELD_SELECTORS,
   'svg',
   'math',
-  '[contenteditable]:not([contenteditable="false"])',
   '[translate="no"]',
   '.notranslate',
 ].join(', ');
@@ -128,13 +133,31 @@ export function isOwnUi(element: Element): boolean {
   return OWN_UI_TAGS.has(element.tagName) || element.closest(OWN_UI_SELECTOR) !== null;
 }
 
-const EDITABLE_SELECTOR =
-  'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+const EDITABLE_SELECTOR = FIELD_SELECTORS.join(', ');
 
-/** The field the reader is typing in, when the focus sits inside one. */
+/**
+ * The field the reader is typing in, when the focus sits inside one.
+ *
+ * `document.activeElement` stops at a shadow host, so an open root has to be entered one
+ * level at a time to reach the control that actually holds the caret. That matters for a
+ * custom `<my-search>` element that wraps its own `<input>`.
+ */
 export function focusedEditableField(active: Element | null | undefined): Element | null {
-  if (!active) return null;
-  return active.closest(EDITABLE_SELECTOR);
+  let element = active ?? null;
+  for (let depth = 0; element && depth < 8; depth += 1) {
+    const field = element.closest(EDITABLE_SELECTOR);
+    if (field) return field;
+    element = element.shadowRoot?.activeElement ?? null;
+  }
+  return null;
+}
+
+/** What the reader has typed into a field. Duck-typed: an iframe field is another realm. */
+function fieldValue(field: Element): string {
+  if ('value' in field && typeof (field as HTMLInputElement).value === 'string') {
+    return (field as HTMLInputElement).value;
+  }
+  return field.textContent ?? '';
 }
 
 /**
@@ -145,19 +168,27 @@ export function focusedEditableField(active: Element | null | undefined): Elemen
  * message box or a form is queued for translation, which is text the reader never asked to
  * translate and may not expect a model to read. Only text the field actually holds is
  * dropped, so a page that keeps an empty field focused can still have its prose translated.
+ *
+ * The match is deliberately loose in one direction: a page selection that happens to be a
+ * substring of the field value is also dropped. Sending text the reader did not offer is
+ * the worse mistake, so the ambiguous case goes the other way.
  */
 export function isTypedTextSelection(active: Element | null | undefined, text: string): boolean {
   const field = focusedEditableField(active);
-  if (!field || text.length === 0) return false;
+  const wanted = text.trim();
+  if (!field || wanted.length === 0) return false;
 
-  const value =
-    'value' in field && typeof (field as HTMLInputElement).value === 'string'
-      ? (field as HTMLInputElement).value
-      : (field.textContent ?? '');
+  const value = fieldValue(field);
   if (value.length === 0) return false;
-  if (value.includes(text)) return true;
-  // A password field reports dots rather than its value.
-  return /^[•*]+$/u.test(text);
+  if (value.includes(wanted)) return true;
+  // A password input paints a mask instead of its value, and the document selection
+  // reports the mask. Only a password input is read this way: `* * *` in body copy is
+  // page text, not a secret.
+  return (
+    field.localName === 'input' &&
+    field.getAttribute('type') === 'password' &&
+    /^[\u2022*]+$/u.test(wanted)
+  );
 }
 
 const OWN_UI_SELECTOR = [...OWN_UI_TAGS].join(', ').toLowerCase();

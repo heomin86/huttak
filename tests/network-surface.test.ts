@@ -11,16 +11,23 @@ import { describe, expect, it } from 'vitest';
  * `download.ts` is the only file allowed to reach the network, and the request it builds
  * may not grow a body or credentials.
  */
-function sources(directory: string): Array<{ path: string; code: string }> {
+
+/** Resolved from this file, so the check reads the repository even from another directory. */
+const ROOT = join(import.meta.dirname, '..');
+
+function sources(directory: string, extensions: RegExp): Array<{ path: string; code: string }> {
   const found: Array<{ path: string; code: string }> = [];
-  for (const entry of readdirSync(directory)) {
+  for (const entry of readdirSync(join(ROOT, directory))) {
     const path = join(directory, entry);
-    if (statSync(path).isDirectory()) {
-      found.push(...sources(path));
+    if (statSync(join(ROOT, path)).isDirectory()) {
+      found.push(...sources(path, extensions));
       continue;
     }
-    if (!/\.(?:ts|svelte)$/u.test(entry)) continue;
-    found.push({ path: path.replaceAll('\\', '/'), code: readFileSync(path, 'utf8') });
+    if (!extensions.test(entry)) continue;
+    found.push({
+      path: path.replaceAll('\\', '/'),
+      code: readFileSync(join(ROOT, path), 'utf8'),
+    });
   }
   return found;
 }
@@ -30,7 +37,13 @@ function withoutComments(code: string): string {
   return code.replaceAll(/\/\*[\s\S]*?\*\//gu, '').replaceAll(/^\s*\/\/.*$/gmu, '');
 }
 
-const files = sources('src').map((file) => ({ ...file, code: withoutComments(file.code) }));
+const files = sources('src', /\.(?:ts|svelte)$/u).map((file) => ({
+  ...file,
+  code: withoutComments(file.code),
+}));
+
+/** Markup and stylesheets, where a remote script, stylesheet or font is actually declared. */
+const markup = [...sources('src', /\.(?:html|css)$/u), ...sources('public', /\.(?:html|css)$/u)];
 
 const NETWORK_SINKS = [
   /\bXMLHttpRequest\b/u,
@@ -73,10 +86,16 @@ describe('network surface', () => {
   });
 
   it('does not add a remote script, stylesheet, or font to an extension page', () => {
-    const remote = files.filter(
+    // Read from the markup and stylesheets, not from `.ts`: a remote `<script src>` is
+    // declared in an entry point's HTML, which the TypeScript scan above never opens.
+    expect(markup.length).toBeGreaterThan(0);
+    const remote = markup.filter(
       (file) =>
-        /<(?:script|link|img|iframe)[^>]+(?:src|href)\s*=\s*['"]https?:/u.test(file.code) ||
-        /@import\s+url\(\s*['"]?https?:/u.test(file.code),
+        /<(?:script|link|img|iframe|source|video|audio|embed|object|track)\b[^>]*\b(?:src|href|data)\s*=\s*['"]?https?:/iu.test(
+          file.code,
+        ) ||
+        /@import\s+(?:url\(\s*)?['"]?https?:/iu.test(file.code) ||
+        /url\(\s*['"]?https?:/iu.test(file.code),
     );
 
     expect(remote.map((file) => file.path)).toEqual([]);
