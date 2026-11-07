@@ -138,21 +138,30 @@ const EDITABLE_SELECTOR = FIELD_SELECTORS.join(', ');
 /**
  * The field the reader is typing in, when the focus sits inside one.
  *
- * `document.activeElement` stops at a shadow host, so an open root has to be entered first:
- * a custom `<my-search>` element that wraps its own `<input>` reports only the host. Walking
- * down before asking `closest` matters — a host that sits inside a `<div contenteditable>`
- * is itself inside an editable region, and asking the host first would answer with the
- * wrapper, whose text is empty, and let the typed value through.
+ * `document.activeElement` stops at a shadow host, so an open root has to be entered before
+ * the control that holds the caret is reachable: a custom `<my-search>` element that wraps
+ * its own `<input>` reports only the host. The chain of hosts is collected first, then each
+ * level is asked for an editable ancestor from the inside out. Innermost wins, so a control
+ * inside a root is found; stepping out afterwards covers the other shape, a host that is
+ * itself dropped inside a `<div contenteditable>` and whose root holds no field. `closest`
+ * cannot climb out of a shadow tree on its own, so that case needs the outer level.
  */
 export function focusedEditableField(active: Element | null | undefined): Element | null {
+  const chain: Element[] = [];
   let element = active ?? null;
-  // Bounded only to survive a pathological page; each step enters one open shadow root.
+  // Bounded to survive a pathological page; each step enters one open shadow root.
   for (let depth = 0; element && depth < 32; depth += 1) {
+    chain.push(element);
     const inner = element.shadowRoot?.activeElement;
-    if (!inner) break;
+    if (!inner || inner === element) break;
     element = inner;
   }
-  return element?.closest(EDITABLE_SELECTOR) ?? null;
+
+  for (let index = chain.length - 1; index >= 0; index -= 1) {
+    const field = chain[index]?.closest(EDITABLE_SELECTOR) ?? null;
+    if (field) return field;
+  }
+  return null;
 }
 
 /** What the reader has typed into a field. Duck-typed: an iframe field is another realm. */

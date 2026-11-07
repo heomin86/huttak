@@ -290,6 +290,23 @@ describe('layout wrappers that generate no box', () => {
       expect(isTypedTextSelection(host, 'hidden from the wrapper')).toBe(true);
     });
 
+    it('climbs back out when the host root holds no field of its own', () => {
+      // The focused element inside the root is not a field, so the innermost level answers
+      // nothing. The host is still inside an editable wrapper, and `closest` cannot climb
+      // out of a shadow tree, so the walk has to step back out to find it.
+      document.body.innerHTML = '<div id="wrap" contenteditable>Draft<my-widget></my-widget></div>';
+      const host = document.querySelector('my-widget');
+      if (!host) throw new Error('missing host');
+      const inner = document.createElement('span');
+      inner.tabIndex = 0;
+      host.attachShadow({ mode: 'open' }).append(inner);
+      inner.focus();
+
+      expect(document.activeElement).toBe(host);
+      expect(host.shadowRoot?.activeElement).toBe(inner);
+      expect(isTypedTextSelection(host, 'Draft')).toBe(true);
+    });
+
     it('leaves page prose alone when an empty field has focus', () => {
       document.body.innerHTML = '<input id="search"><p id="copy">Readable paragraph</p>';
       const field = document.querySelector('#search');

@@ -45,13 +45,14 @@ const files = sources('src', /\.(?:ts|svelte)$/u).map((file) => ({
 /**
  * Markup and stylesheets, where a remote script, stylesheet or font is actually declared.
  *
- * `.svelte` belongs here too: the components carry `<style>` blocks and `<svelte:head>`
- * links. The first version of this check read only `.ts` and `.svelte`, so the places a
- * remote resource is actually declared — the entry point HTML and `src/ui` CSS — were never
- * opened. Scanning all three means neither file set can lose what the other once covered.
+ * `.svelte` and `.ts` both belong here: a component carries a `<style>` block, and a page
+ * can be built from a template literal. The first version of this check read only the
+ * TypeScript tree, so the place a remote resource is usually declared — the entry point's
+ * HTML — was never opened. Reading every shape, then counting each one, means no single
+ * extension can quietly fall out of the scan again.
  */
 const markup = [
-  ...sources('src', /\.(?:html|css|svelte)$/u),
+  ...sources('src', /\.(?:ts|html|css|svelte)$/u),
   ...sources('public', /\.(?:html|css|js)$/u),
 ].map((file) => ({ ...file, code: withoutComments(file.code) }));
 
@@ -96,16 +97,23 @@ describe('network surface', () => {
   });
 
   it('does not add a remote script, stylesheet, or font to an extension page', () => {
-    // Read from the markup and stylesheets, not from `.ts`: a remote `<script src>` is
-    // declared in an entry point's HTML, which the TypeScript scan above never opens.
-    expect(markup.length).toBeGreaterThan(0);
+    // The declaration can sit in an entry point's HTML, a stylesheet, a `.svelte` `<style>`
+    // block, or a template literal in `.ts`, so every one of them is read. Counting by
+    // extension keeps the check from passing because a directory was scanned and found empty.
+    const count = (extension: RegExp): number =>
+      markup.filter((file) => extension.test(file.path)).length;
+    expect(count(/\.html$/u)).toBeGreaterThan(0);
+    expect(count(/\.css$/u)).toBeGreaterThan(0);
+    expect(count(/\.svelte$/u)).toBeGreaterThan(0);
+    expect(count(/\.ts$/u)).toBeGreaterThan(0);
+
     const remote = markup.filter(
       (file) =>
-        /<(?:script|link|img|iframe|source|video|audio|embed|object|track)\b[^>]*\b(?:src|href|data)\s*=\s*['"]?https?:/iu.test(
+        /<(?:script|link|img|iframe|source|video|audio|embed|object|track)\b[^>]*?(?<![\w-])(?:src|href|srcset)\s*=\s*['"]?(?:https?:)?\/\//iu.test(
           file.code,
         ) ||
-        /@import\s+(?:url\(\s*)?['"]?https?:/iu.test(file.code) ||
-        /url\(\s*['"]?https?:/iu.test(file.code),
+        /@import\s+(?:url\(\s*)?['"]?(?:https?:)?\/\//iu.test(file.code) ||
+        /url\(\s*['"]?(?:https?:)?\/\//iu.test(file.code),
     );
 
     expect(remote.map((file) => file.path)).toEqual([]);
