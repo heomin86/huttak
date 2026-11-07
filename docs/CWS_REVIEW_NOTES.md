@@ -22,7 +22,7 @@ Single purpose: translating web pages.
 Privacy policy: https://jammaru.com/sakutto/privacy/
 
 Remote code: モデル重み（GGUF データ）のみを huggingface.co から DL。実行コードはすべて同梱。
-The only fetch this extension makes is a PLaMo 3 Translate GGUF weight from huggingface.co. The URL is pinned to a commit. The file is checked with SHA-256 before use, and a mismatch is discarded. The request has no body. Page text is not included. Hugging Face can see the IP address and the file request. Redirects are followed. credentials is omitted. Every script, worker, and wasm the extension executes is in the zip under vendor/wllama/. The extension does not request nativeMessaging.
+The only fetch this extension makes is a PLaMo 3 Translate GGUF weight from huggingface.co. The URL is pinned to a commit. The file is checked with SHA-256 before it is stored, and a mismatch is discarded. A later launch uses the stored file when its size and the recorded digest still match the pin. The bytes are not hashed again on every launch. The request has no body. Page text is not included. Hugging Face can see the IP address and the file request. Redirects are followed. credentials is omitted. Every script, worker, and wasm the extension executes is in the zip under vendor/wllama/. The extension does not request nativeMessaging.
 
 Release manifest permissions: offscreen, storage, unlimitedStorage, activeTab, scripting, contextMenus. optional_host_permissions: https://*/* and http://*/*. host_permissions is empty at install. optional_permissions is empty. The content script is registered at runtime and injected with scripting.executeScript. It is not granted for every site at install.
 
@@ -32,7 +32,9 @@ Onboarding is one click on the agree-and-start button: Agree to the license and 
 
 Stored on the device: settings, glossary, per-site rules, and that consent record in chrome.storage.local; a timing sample for a fixed paragraph (model id, duration, timestamp; not page text); a short capabilities cache in chrome.storage.session; the model file in the OPFS directory sakutto; a translation cache in IndexedDB database sakutto-translations (at most 5000 rows). The cache key includes a SHA-256 of the source text and a hash of the glossary. The source text itself is not the key.
 
-Chrome's Translator API is used only for a language pair the PLaMo model does not support, and only when Chrome reports the language pack as available. A pair the model supports is never routed to Chrome, so the page keeps its source text until PLaMo paints it. Chrome may download its own language packs. The agree-and-start button may call Translator.create() for the language pair so Chrome can install the pack. That call does not include page text. If the source language is empty, up to 1000 characters of page text may be passed to Chrome's Language Detector API. The extension does not choose a translation server and does not upload page text to the developer, Preferred Networks, or any other translation server.
+Page text and editable fields: `input`, `textarea`, `select`, and editable regions are not translated (`src/dom/blocks.ts`). A selection inside the field the reader is typing in is skipped too, because a text box reports its value through the document selection (`isTypedTextSelection` in `src/dom/blocks.ts`).
+
+Chrome's Translator API is used only for a language pair the PLaMo model does not support, and only when Chrome reports the language pack as available. A pair the model supports is never routed to Chrome, so the page keeps its source text until PLaMo paints it. Chrome may download its own language packs. The agree-and-start button may call Translator.create() for the language pair so Chrome can install the pack. That call does not include page text. When the page has no language tag, the content script passes up to 1200 characters of the body to Chrome's on-device Language Detector (src/dom/detect.ts). When a pair is not one PLaMo supports and the source language is still empty, up to 1000 characters are passed the same way (src/engine/offscreen/host.ts, src/engine/chrome/translator.ts). Those calls are not requests this extension sends to a server. The extension does not choose a translation server and does not upload page text to the developer, Preferred Networks, or any other translation server.
 
 Model pins from src/engine/model/catalog.ts:
 
@@ -57,7 +59,7 @@ url https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF/resolve/232fbd7916519
 The packaged runtime is the pinned wllama build (commit d275dac17bc7f190161deb24fd834ce03342e2bc, llama.cpp 5aeac37a35b44fde4bdffaec9159f2fcb253b622). It is compiled into the zip. It is not downloaded at runtime. The listing does not claim a GPU speed. WebGPU and n_parallel on a real GPU are unmeasured in this repository.
 ```
 
-文字数: 4928
+文字数: 5664
 
 ## モデルのピン
 
@@ -72,7 +74,7 @@ The packaged runtime is the pinned wllama build (commit d275dac17bc7f190161deb24
 | サイズ     | 573,123,200 バイト（表示は 573 MB）                                | 1,807,199,392 バイト（表示は約 1.81 GB）                           |
 | SHA-256    | `923b2f28a9856de1b8b3b610a7e59ded0b14d007466fd5dd526e6a9ecaadafdd` | `f36d0813dd95573a852ab5d76e374c543632d9e292929e922bcdbf7e53b494e0` |
 
-URL は `https://huggingface.co/<repo>/resolve/<commit>/<file>` です。取得は `src/engine/model/download.ts` です。本文のない GET で、再開時だけ `Range` を付けます。`redirect` は `follow`、`credentials` は指定しません。保存前に SHA-256 がピンと一致することを確認し、不一致なら捨てます。
+URL は `https://huggingface.co/<repo>/resolve/<commit>/<file>` です。取得は `src/engine/model/download.ts` です。本文のない GET で、再開時だけ `Range` を付けます。`redirect` は `follow`、`credentials` は指定しません。保存前に SHA-256 がピンと一致することを確認し、不一致なら捨てます。次の起動では、サイズと記録済みダイジェストがピンと一致する保存済みファイルを使います。起動のたびにバイト列はハッシュし直しません。
 
 実行する wasm と worker は zip の `vendor/wllama/` に同梱します。`scripts/verify-package.ts` が、`wllama.js`、`wllama.wasm`、`wllama-worker.js`、pthread と compat の wasm、およびライセンス文の存在を確認します。モデル重み（`.gguf`）が zip に入っている場合は拒否します。wllama の commit は `d275dac17bc7f190161deb24fd834ce03342e2bc`、llama.cpp は `5aeac37a35b44fde4bdffaec9159f2fcb253b622` です（`scripts/wllama/pins.ts`）。実行時にそのソースは取りに行きません。
 
@@ -125,6 +127,6 @@ content script は `src/entrypoints/content.ts` の `registration: 'runtime'` �
 
 拡張機能自身の通信は、上の GGUF 取得です。ページ本文、選択範囲、用語集、訳文を載せるリクエストはありません。`chrome.runtime.requestUpdateCheck` と `chrome.storage.sync` は使いません。
 
-Chrome の Translator API を使うのは、PLaMo のモデルが対応していない言語の組み合わせで、かつ Chrome が言語パックを `available` と報告しているときだけです（`src/engine/router.ts`、`src/engine/chrome/translator.ts`）。モデルが対応する組み合わせを Chrome に回すことはないため、モデルが描画するまでは原文のまま表示します。言語パックの取得は Chrome です。「はじめる」は、パックが `downloadable` でもクリック中に `Translator.create()` を呼ぶことがあります（`src/shared/translator-pack.ts`）。この呼び出しにページ本文はありません。原文言語が空のとき、最大 1,000 文字を Chrome の Language Detector API に渡します（`src/engine/offscreen/host.ts`）。
+Chrome の Translator API を使うのは、PLaMo のモデルが対応していない言語の組み合わせで、かつ Chrome が言語パックを `available` と報告しているときだけです（`src/engine/router.ts`、`src/engine/chrome/translator.ts`）。モデルが対応する組み合わせを Chrome に回すことはないため、モデルが描画するまでは原文のまま表示します。言語パックの取得は Chrome です。「はじめる」は、パックが `downloadable` でもクリック中に `Translator.create()` を呼ぶことがあります（`src/shared/translator-pack.ts`）。この呼び出しにページ本文はありません。ページに言語タグがないとき、content script が本文から最大 1,200 文字を Chrome の端末内 Language Detector に渡します（`src/dom/detect.ts`）。PLaMo が対応しない組み合わせでソース言語がまだ空のときは、最大 1,000 文字を同じ API に渡します（`src/engine/offscreen/host.ts`、`src/engine/chrome/translator.ts`）。これらは、この拡張機能がサーバーへ送るリクエストではありません。
 
 速度の数値は審査メモの主張にしません。WebGPU と `n_parallel` を実 GPU で測った結果は、このリポジトリにありません。

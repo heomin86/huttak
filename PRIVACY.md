@@ -2,7 +2,7 @@
 
 Sakutto translates web pages in Chrome. This page describes what the extension code does with data. It is a description of the program, not a legal opinion.
 
-Checked against the code on 2026-11-06. If the code changes, this page has to change with it.
+Checked against the code on 2026-11-07. If the code changes, this page has to change with it.
 
 ## Who operates the extension
 
@@ -29,14 +29,14 @@ The code is `src/engine/model/catalog.ts` and `src/engine/model/download.ts`. Th
 
 `redirect: 'follow'` means the browser then requests the host Hugging Face names. On 2026-11-06 that host was `https://us.aws.cdn.hf.co/`. The region can differ. That CDN receives the IP address, the usual browser request headers, and the signed URL for the file. It does not receive the page text. The `Link` header also named `https://cas-server.xethub.hf.co/`. `fetch` does not follow `Link` headers, and the extension has no Xet client, so that host is not requested by this code.
 
-The 0.8B file is the default (573,123,200 bytes). The 2B file (1,807,199,392 bytes) is downloaded only after you choose it. Both are checked with the pinned SHA-256 before use. A mismatch is discarded.
+The 0.8B file is the default (573,123,200 bytes). The 2B file (1,807,199,392 bytes) is downloaded only after you choose it. Both are checked with the pinned SHA-256 before the file is stored. A mismatch is discarded. A later launch uses the stored file only when its size and the recorded digest still match the pin. The bytes are not hashed again on every launch.
 
 ## Requests the extension does not make
 
 - No analytics, crash report, or telemetry endpoint.
 - No request that includes page text, a glossary, or a translation.
 - No extension-initiated update check. If you installed from the Chrome Web Store, Chrome may contact Google to update the extension. That is Chrome's request. It is not page text, and this program does not add one.
-- Chrome's Translator API (`src/engine/chrome/translator.ts`) is used only for a language pair the PLaMo model does not support, and only when Chrome reports the language pack as `available` (`src/engine/router.ts`). A pair the model supports is never routed to Chrome, so no built-in text is shown as a stand-in while the model loads. The extension does not choose a server and does not upload the text itself. If the source language is empty, up to 1,000 characters of page text may first go to Chrome's Language Detector API so the extension can ask Translator about the right pair (`src/engine/offscreen/host.ts`). Onboarding's agree-and-start button may call `Translator.create()` for the language pair even when the pack is still `downloadable`, so Chrome can install the pack (`src/shared/translator-pack.ts`). That call does not include page text. Google's Translator API documentation describes translation as client-side and says Chrome downloads the language pack. This policy does not claim an independent audit of Chrome.
+- Chrome's Translator API (`src/engine/chrome/translator.ts`) is used only for a language pair the PLaMo model does not support, and only when Chrome reports the language pack as `available` (`src/engine/router.ts`). A pair the model supports is never routed to Chrome, so no built-in text is shown as a stand-in while the model loads. The extension does not choose a server and does not upload the text itself. Chrome's on-device Language Detector can see page text in two places. When the page has no language tag, the content script passes up to 1,200 characters of the body (`src/dom/detect.ts`). When a pair is not one PLaMo supports and the source language is still empty, up to 1,000 characters are passed so the extension can ask Translator about that pair (`src/engine/offscreen/host.ts`, `src/engine/chrome/translator.ts`). Those calls are not requests this extension sends to a server. Onboarding's agree-and-start button may call `Translator.create()` for the language pair even when the pack is still `downloadable`, so Chrome can install the pack (`src/shared/translator-pack.ts`). That call does not include page text. Google's Translator API documentation describes translation as client-side and says Chrome downloads the language pack. This policy does not claim an independent audit of Chrome.
 
 ## Stored on the device
 
@@ -45,7 +45,7 @@ The 0.8B file is the default (573,123,200 bytes). The 2B file (1,807,199,392 byt
 - The model file, under the OPFS directory `sakutto` (`src/engine/model/file-store.ts`).
 - A translation cache in IndexedDB, database `sakutto-translations` (`src/engine/cache/store.ts`). Each row stores the translation, which engine produced it, and timestamps. The key includes a SHA-256 of the source text and a hash of the glossary, not the source text itself. The cache keeps at most 5,000 rows and drops the least recently used. There is no time limit.
 
-`input`, `textarea`, `select`, and editable regions are not translated (`src/dom/blocks.ts`). Ordinary page text is, including text that happens to contain personal information.
+`input`, `textarea`, `select`, and editable regions are not translated (`src/dom/blocks.ts`). Ordinary page text is, including text that happens to contain personal information. A selection inside the field the reader is typing in is skipped too: a text box reports its value through the document selection, and that value is the reader's own input, not page copy (`isTypedTextSelection` in `src/dom/blocks.ts`).
 
 You can delete a model and clear the translation cache in settings. Changing or deleting the pinned model downloads it again. Removing the extension clears `chrome.storage.local`. IndexedDB and OPFS belong to the extension origin; the settings buttons are the explicit delete path. A Chrome sentence that names those two stores on uninstall was not found in the pages checked on 2026-11-05.
 
@@ -71,7 +71,7 @@ Questions about this policy can be opened as an issue at https://github.com/jamm
 
 Sakutto は、Chrome でウェブページを翻訳します。このページは、拡張機能のコードがデータをどう扱うかを説明します。法的意見ではありません。
 
-2026-11-06 のコードに合わせて確認しました。コードが変わったら、このページも変えます。
+2026-11-07 のコードに合わせて確認しました。コードが変わったら、このページも変えます。
 
 ## 運営者
 
@@ -98,14 +98,14 @@ MIT の著作権表示にある `jammaru` はリポジトリ上の名前であ�
 
 `redirect: 'follow'` のため、ブラウザは Hugging Face が示したホストへ続きます。2026-11-06 のホストは `https://us.aws.cdn.hf.co/` でした。地域によりホストは変わります。その CDN には、IP アドレス、通常のブラウザのヘッダー、ファイル用の署名付き URL が届きます。ページの本文は届きません。`Link` ヘッダーには `https://cas-server.xethub.hf.co/` も出ていました。`fetch` は `Link` をたどらず、この拡張機能に Xet のクライアントはないため、そのホストへは要求しません。
 
-標準は 0.8B（573,123,200 バイト）です。2B（1,807,199,392 バイト）は、利用者が選んだときだけ取得します。どちらも、使う前にピン留めした SHA-256 で確認します。一致しなければ捨てます。
+標準は 0.8B（573,123,200 バイト）です。2B（1,807,199,392 バイト）は、利用者が選んだときだけ取得します。どちらも、保存する前にピン留めした SHA-256 で確認します。一致しなければ捨てます。次に起動したときは、保存済みファイルのサイズと、記録したダイジェストがピンと一致するときだけ使います。起動のたびにバイト列をハッシュし直すことはありません。
 
 ## 拡張機能が行わない通信
 
 - 分析、クラッシュ報告、テレメトリのエンドポイントはありません。
 - ページの本文、用語集、訳文を含むリクエストはありません。
 - 拡張機能自身の更新確認はありません。Chrome ウェブストアから入れた場合、Chrome が Google に更新を問い合わせることがあります。それは Chrome の通信であり、ページの本文ではなく、このプログラムが追加するものでもありません。
-- Chrome の Translator API（`src/engine/chrome/translator.ts`）を使うのは、PLaMo のモデルが対応していない言語の組み合わせで、かつ Chrome が言語パックを `available` と報告しているときだけです（`src/engine/router.ts`）。モデルが対応する組み合わせを Chrome に回すことはないため、モデルの読み込み中に Chrome 内蔵の訳が代わりに表示されることはありません。サーバーは選ばず、拡張機能自身は文字を送りません。ソース言語が空のときは、その前に最大 1,000 文字を Chrome の Language Detector API に渡して組み合わせを決めます（`src/engine/offscreen/host.ts`）。オンボーディングの「ライセンスに同意して開始」では、言語パックが `downloadable` でもクリック中に `Translator.create()` し、Chrome がパックを入れられるようにすることがあります（`src/shared/translator-pack.ts`）。この呼び出しにページ本文は入りません。Google の Translator API の文書は、これを端末側の翻訳と説明し、言語パックは Chrome が取得するとしています。このポリシーは、Chrome 本体を独自に監査したとは言いません。
+- Chrome の Translator API（`src/engine/chrome/translator.ts`）を使うのは、PLaMo のモデルが対応していない言語の組み合わせで、かつ Chrome が言語パックを `available` と報告しているときだけです（`src/engine/router.ts`）。モデルが対応する組み合わせを Chrome に回すことはないため、モデルの読み込み中に Chrome 内蔵の訳が代わりに表示されることはありません。サーバーは選ばず、拡張機能自身は文字を送りません。Chrome の端末内 Language Detector がページの文字を見る箇所は二つです。ページに言語タグがないとき、content script が本文から最大 1,200 文字を渡します（`src/dom/detect.ts`）。PLaMo が対応しない組み合わせで、ソース言語がまだ空のときは、Translator に渡す組み合わせを決めるため最大 1,000 文字を渡します（`src/engine/offscreen/host.ts`、`src/engine/chrome/translator.ts`）。これらは、この拡張機能がサーバーへ送るリクエストではありません。オンボーディングの「ライセンスに同意して開始」では、言語パックが `downloadable` でもクリック中に `Translator.create()` し、Chrome がパックを入れられるようにすることがあります（`src/shared/translator-pack.ts`）。この呼び出しにページ本文は入りません。Google の Translator API の文書は、これを端末側の翻訳と説明し、言語パックは Chrome が取得するとしています。このポリシーは、Chrome 本体を独自に監査したとは言いません。
 
 ## 端末に保存するもの
 
@@ -114,7 +114,7 @@ MIT の著作権表示にある `jammaru` はリポジトリ上の名前であ�
 - モデルファイル。OPFS の `sakutto` ディレクトリです（`src/engine/model/file-store.ts`）。
 - 翻訳キャッシュ。IndexedDB の `sakutto-translations` です（`src/engine/cache/store.ts`）。各行は訳文、どちらのエンジンか、時刻です。キーには原文の SHA-256 と用語集のハッシュが入り、原文そのものは入りません。最大 5,000 件で、最も昔に使ったものから捨てます。期限はありません。
 
-`input`、`textarea`、`select`、編集できる領域は翻訳しません（`src/dom/blocks.ts`）。通常の本文は翻訳します。その中に個人に関する記述が含まれることはあります。
+`input`、`textarea`、`select`、編集できる領域は翻訳しません（`src/dom/blocks.ts`）。通常の本文は翻訳します。その中に個人に関する記述が含まれることはあります。入力中の欄の中で選択した文字も翻訳しません。テキスト欄はその値を文書の選択範囲として返すため、その値は本文ではなく利用者自身の入力です（`src/dom/blocks.ts` の `isTypedTextSelection`）。
 
 設定画面から、モデルの削除と翻訳キャッシュの消去ができます。ピン留めしたモデルが変わるか、削除すると、取り直します。拡張機能を削除すると `chrome.storage.local` は消えます。IndexedDB と OPFS は拡張機能のオリジンにあります。明示的な削除は設定画面のボタンです。アンインストール時にその二つを名指しする Chrome の文は、2026-11-05 に確認したページにはありませんでした。
 
