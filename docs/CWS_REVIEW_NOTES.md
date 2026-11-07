@@ -6,6 +6,8 @@ Repository: https://github.com/jammaru/sakutto
 
 Privacy policy: https://jammaru.com/sakutto/privacy/
 
+`PRIVACY.md` is the stable user-facing policy. It describes categories of data and who can see them, so it does not change when a constant, a file path, or a request header changes. This file is the opposite: it is the reviewer-facing implementation detail, and the hashes, byte sizes, character limits, storage names, and source paths below are expected to track the tree. When the two disagree about a fact, the code and this file win and `PRIVACY.md` should be re-read only to confirm it still describes the same categories.
+
 The same privacy URL ends both detailed descriptions in `CWS_LISTING.md`. The listing is published at https://chrome.google.com/webstore/detail/mhlbjjijfkoghmcjndgdimhdlfkhadfl.
 
 The packaged name is `extensionName` in both locales: Sakutto - Local AI translation in `en` and Sakutto - ローカルAI翻訳 in `ja`. `extensionShortName` is Sakutto in both. Both the item name and the summary are read-only in the dashboard and come from the zip. The older titles Sakutto for PLaMo and サクッと翻訳 for PLaMo are not the current name. The item is unofficial and is not a Preferred Networks product. The UI says Built with PLaMo.

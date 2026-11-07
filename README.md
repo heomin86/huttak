@@ -43,7 +43,7 @@ Eleven further languages (cs, da, el, fi, kn, no, pt, ro, sv, tr, uk) are transl
 
 ## Privacy
 
-The extension does not send page text to a server, and it has no telemetry. Its own request is the model download, which starts at `huggingface.co` and follows Hugging Face's redirect to a CDN. That request carries the file request and connection metadata, not the page text. Chrome may separately download a built-in translation language pack, which is used only for the pairs PLaMo does not translate. PLaMo translation works offline only after the checked model file is stored. Details are in [PRIVACY.md](PRIVACY.md).
+Translation runs on your device. The extension does not send page text, selections, your glossary, or translations to the developer or to any translation server, and it has no account, ads, or telemetry. Its own network request is the model download from Hugging Face. Read the policy at [PRIVACY.md](PRIVACY.md) or https://jammaru.com/sakutto/privacy/.
 
 ## Build
 
