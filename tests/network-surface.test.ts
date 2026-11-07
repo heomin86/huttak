@@ -73,24 +73,37 @@ const REMOTE_URL = /^(?:https?:)?\/\//iu;
 const RESOURCE_ATTRIBUTE =
   /(?<![\w-])(?:src|srcset|poster)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/giu;
 
-/** A CSS `url()`. Case-sensitive: `new URL(...)` in TypeScript is not a CSS function. */
-const URL_FUNCTION = /url\(\s*['"]?([^'")\s]+)['"]?\s*\)/gu;
-const AT_IMPORT = /@import\s+(?:url\(\s*)?['"]?([^'")\s;]+)/giu;
+/**
+ * A CSS `url()`. Function names are ASCII case-insensitive, so `URL(…)` fetches too. The
+ * lookbehind keeps `new URL('https://…')` — a constructor in TypeScript, not a CSS
+ * function — from counting as one.
+ */
+const URL_FUNCTION = /(?<!\bnew\s{0,4})url\(\s*['"]?([^'")\s]+)['"]?\s*\)/giu;
 
 /** A module specifier the extension would load: dynamic `import()`, or `importScripts()`. */
 const DYNAMIC_IMPORT = /\b(?:import|importScripts)\s*\(\s*['"]([^'"]+)['"]/gu;
-/** A static module specifier: `import "…"`, or `import … from "…"` / `export … from "…"`. */
+/**
+ * A static module specifier: `import "…"`, `import … from "…"`, `export … from "…"`, or a
+ * bare `@import "…"`. A quoted `@import` is not CSS-only syntax, so no separate pattern.
+ */
 const STATIC_IMPORT = /\b(?:import|export)\b(?:[^;'"()]*?\bfrom\s*)?\s*['"]([^'"]+)['"]/gu;
 /** A worker built from a URL. */
 const WORKER_URL = /\bnew\s+(?:Shared)?Worker\s*\(\s*['"]([^'"]+)['"]/gu;
 
-/** `<link>` tags only, so a page link's `href` is not read as a subresource. */
-const LINK_HREF = /<link\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/giu;
+/**
+ * `<link>` tags only, so a page link's `href` is not read as a subresource. The tag body
+ * skips a quoted value as a unit, so `<link rel="next>page" href="…">` still reaches
+ * `href`; `(?<![\w-])` keeps `data-href` from counting.
+ */
+const LINK_HREF =
+  /<link\b(?:[^>"']|"[^"]*"|'[^']*')*?(?<![\w-])href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/giu;
 
 /**
- * Remote references in one file: a subresource attribute, a `<link href>`, a CSS `url()` or
- * `@import`, or an import / worker specifier. `srcset` holds a comma-separated list, so each
- * entry is checked on its own, and a quoted attribute may contain a `>` without ending early.
+ * Remote references in one file: a subresource attribute, a `<link href>`, a CSS `url()`, or
+ * an import / worker specifier. `srcset` holds a comma-separated list, so each entry is
+ * checked on its own, and a quoted attribute may contain a `>` without ending early. An
+ * `@import url(…)` reaches `URL_FUNCTION` and a bare `@import "…"` reaches `STATIC_IMPORT`,
+ * so neither needs a pattern of its own.
  */
 export function remoteReferences(code: string): string[] {
   const found: string[] = [];
@@ -107,7 +120,6 @@ export function remoteReferences(code: string): string[] {
   }
   for (const match of code.matchAll(LINK_HREF)) collect(match[1] ?? match[2] ?? match[3]);
   for (const match of code.matchAll(URL_FUNCTION)) collect(match[1]);
-  for (const match of code.matchAll(AT_IMPORT)) collect(match[1]);
   for (const match of code.matchAll(DYNAMIC_IMPORT)) collect(match[1]);
   for (const match of code.matchAll(STATIC_IMPORT)) collect(match[1]);
   for (const match of code.matchAll(WORKER_URL)) collect(match[1]);
@@ -210,9 +222,21 @@ describe('remoteReferences', () => {
     ]);
   });
 
+  it('reads an uppercased CSS url() and a <link> whose tag body holds a >', () => {
+    // CSS function names are ASCII case-insensitive, so `URL(` fetches too.
+    expect(remoteReferences('.x { background: URL(https://cdn.example.com/a.png); }')).toEqual([
+      'https://cdn.example.com/a.png',
+    ]);
+    // A quoted tag body may contain a `>`; the attribute after it still counts.
+    expect(remoteReferences('<link rel="next>page" href="https://cdn.example.com/a.css">')).toEqual(
+      ['https://cdn.example.com/a.css'],
+    );
+  });
+
   it('leaves a local path and a page link alone', () => {
     expect(remoteReferences('<img src="./icon.png"><link href="../ui/base.css">')).toEqual([]);
     expect(remoteReferences('<img data-src="https://cdn.example.com/a.png">')).toEqual([]);
+    expect(remoteReferences('<link data-href="https://cdn.example.com/a.css">')).toEqual([]);
     // A link the reader may follow is content, not a request this extension makes.
     expect(remoteReferences('<a href="https://jammaru.com/sakutto">Sakutto</a>')).toEqual([]);
     expect(remoteReferences("const base = new URL('https://cdn.example.com/');")).toEqual([]);
