@@ -29,7 +29,7 @@ The code is `src/engine/model/catalog.ts` and `src/engine/model/download.ts`. Th
 
 `redirect: 'follow'` means the browser then requests the host Hugging Face names. On 2026-11-06 that host was `https://us.aws.cdn.hf.co/`. The region can differ. That CDN receives the IP address, the usual browser request headers, and the signed URL for the file. It does not receive the page text. The `Link` header also named `https://cas-server.xethub.hf.co/`. `fetch` does not follow `Link` headers, and the extension has no Xet client, so that host is not requested by this code.
 
-The 0.8B file is the default (573,123,200 bytes). The 2B file (1,807,199,392 bytes) is downloaded only after you choose it. Both are checked with the pinned SHA-256 before the file is stored. A mismatch is discarded. A later launch uses the stored file only when its size and the recorded digest still match the pin. The bytes are not hashed again on every launch.
+The 0.8B file is the default (573,123,200 bytes). The 2B file (1,807,199,392 bytes) is downloaded only after you choose it. The bytes land in a `.part` file in the same OPFS directory while the download runs. When it finishes, the file is read back and hashed against the pinned SHA-256; only a match is moved to its final name. A mismatch is deleted. An interrupted download leaves its `.part` file so the next attempt resumes from there. A later launch uses the stored file only when its size and the recorded digest still match the pin. The bytes are not hashed again on every launch.
 
 ## Requests the extension does not make
 
@@ -45,7 +45,7 @@ The 0.8B file is the default (573,123,200 bytes). The 2B file (1,807,199,392 byt
 - The model file, under the OPFS directory `sakutto` (`src/engine/model/file-store.ts`).
 - A translation cache in IndexedDB, database `sakutto-translations` (`src/engine/cache/store.ts`). Each row stores the translation, which engine produced it, and timestamps. The key includes a SHA-256 of the source text and a hash of the glossary, not the source text itself. The cache keeps at most 5,000 rows and drops the least recently used. There is no time limit.
 
-`input`, `textarea`, `select`, and editable regions are not translated (`src/dom/blocks.ts`). Ordinary page text is, including text that happens to contain personal information. A selection inside the field the reader is typing in is skipped too: a text box reports its value through the document selection, and that value is the reader's own input, not page copy (`isTypedTextSelection` in `src/dom/blocks.ts`).
+`input`, `textarea`, `select`, and editable regions are not translated (`src/dom/blocks.ts`). Ordinary page text is, including text that happens to contain personal information. A selection inside the field the reader is typing in is skipped too: a text box reports its value through the document selection, and that value is the reader's own input, not page copy (`isTypedTextSelection` in `src/dom/blocks.ts`). The check follows an open shadow root to the control inside it. A field a page keeps in a closed shadow root cannot be reached that way, so a selection reported for one is not recognised as typed text.
 
 You can delete a model and clear the translation cache in settings. Changing or deleting the pinned model downloads it again. Removing the extension clears `chrome.storage.local`. IndexedDB and OPFS belong to the extension origin; the settings buttons are the explicit delete path. A Chrome sentence that names those two stores on uninstall was not found in the pages checked on 2026-11-05.
 
@@ -98,7 +98,7 @@ MIT の著作権表示にある `jammaru` はリポジトリ上の名前であ�
 
 `redirect: 'follow'` のため、ブラウザは Hugging Face が示したホストへ続きます。2026-11-06 のホストは `https://us.aws.cdn.hf.co/` でした。地域によりホストは変わります。その CDN には、IP アドレス、通常のブラウザのヘッダー、ファイル用の署名付き URL が届きます。ページの本文は届きません。`Link` ヘッダーには `https://cas-server.xethub.hf.co/` も出ていました。`fetch` は `Link` をたどらず、この拡張機能に Xet のクライアントはないため、そのホストへは要求しません。
 
-標準は 0.8B（573,123,200 バイト）です。2B（1,807,199,392 バイト）は、利用者が選んだときだけ取得します。どちらも、保存する前にピン留めした SHA-256 で確認します。一致しなければ捨てます。次に起動したときは、保存済みファイルのサイズと、記録したダイジェストがピンと一致するときだけ使います。起動のたびにバイト列をハッシュし直すことはありません。
+標準は 0.8B（573,123,200 バイト）です。2B（1,807,199,392 バイト）は、利用者が選んだときだけ取得します。取得中、バイト列は同じ OPFS ディレクトリの `.part` ファイルへ書かれます。取得が終わると、そのファイルを読み戻してピン留めした SHA-256 と照合し、一致したものだけを最終的な名前へ移します。一致しなければ削除します。途中で止まった取得は `.part` ファイルを残すので、次はその続きから再開します。次に起動したときは、保存済みファイルのサイズと、記録したダイジェストがピンと一致するときだけ使います。起動のたびにバイト列をハッシュし直すことはありません。
 
 ## 拡張機能が行わない通信
 
@@ -114,7 +114,7 @@ MIT の著作権表示にある `jammaru` はリポジトリ上の名前であ�
 - モデルファイル。OPFS の `sakutto` ディレクトリです（`src/engine/model/file-store.ts`）。
 - 翻訳キャッシュ。IndexedDB の `sakutto-translations` です（`src/engine/cache/store.ts`）。各行は訳文、どちらのエンジンか、時刻です。キーには原文の SHA-256 と用語集のハッシュが入り、原文そのものは入りません。最大 5,000 件で、最も昔に使ったものから捨てます。期限はありません。
 
-`input`、`textarea`、`select`、編集できる領域は翻訳しません（`src/dom/blocks.ts`）。通常の本文は翻訳します。その中に個人に関する記述が含まれることはあります。入力中の欄の中で選択した文字も翻訳しません。テキスト欄はその値を文書の選択範囲として返すため、その値は本文ではなく利用者自身の入力です（`src/dom/blocks.ts` の `isTypedTextSelection`）。
+`input`、`textarea`、`select`、編集できる領域は翻訳しません（`src/dom/blocks.ts`）。通常の本文は翻訳します。その中に個人に関する記述が含まれることはあります。入力中の欄の中で選択した文字も翻訳しません。テキスト欄はその値を文書の選択範囲として返すため、その値は本文ではなく利用者自身の入力です（`src/dom/blocks.ts` の `isTypedTextSelection`）。この判定はオープンな shadow root の中の欄までたどります。ページが closed な shadow root に置いた欄には届かないため、そこで報告された選択は入力文字として扱いません。
 
 設定画面から、モデルの削除と翻訳キャッシュの消去ができます。ピン留めしたモデルが変わるか、削除すると、取り直します。拡張機能を削除すると `chrome.storage.local` は消えます。IndexedDB と OPFS は拡張機能のオリジンにあります。明示的な削除は設定画面のボタンです。アンインストール時にその二つを名指しする Chrome の文は、2026-11-05 に確認したページにはありませんでした。
 
