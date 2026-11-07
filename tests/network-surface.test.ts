@@ -75,18 +75,19 @@ const RESOURCE_ATTRIBUTE =
 
 /**
  * A CSS `url()`. Function names are ASCII case-insensitive, so `URL(…)` fetches too. The
- * lookbehind keeps `new URL('https://…')` — a constructor in TypeScript, not a CSS
- * function — from counting as one.
+ * lookbehind takes an unbounded run of whitespace, not a fixed one: `new    URL(` with any
+ * spacing is still a constructor in script, never a stylesheet function.
  */
-const URL_FUNCTION = /(?<!\bnew\s{0,4})url\(\s*['"]?([^'")\s]+)['"]?\s*\)/giu;
+const URL_FUNCTION = /(?<!\bnew\s+)url\(\s*['"]?([^'")\s]+)['"]?\s*\)/giu;
 
 /** A module specifier the extension would load: dynamic `import()`, or `importScripts()`. */
 const DYNAMIC_IMPORT = /\b(?:import|importScripts)\s*\(\s*['"]([^'"]+)['"]/gu;
 /**
  * A static module specifier: `import "…"`, `import … from "…"`, `export … from "…"`, or a
- * bare `@import "…"`. A quoted `@import` is not CSS-only syntax, so no separate pattern.
+ * bare `@import "…"`. Case-insensitive because a CSS `@IMPORT` is the same rule; a quoted
+ * `@import url(…)` form reaches `URL_FUNCTION` instead.
  */
-const STATIC_IMPORT = /\b(?:import|export)\b(?:[^;'"()]*?\bfrom\s*)?\s*['"]([^'"]+)['"]/gu;
+const STATIC_IMPORT = /\b(?:import|export)\b(?:[^;'"()]*?\bfrom\s*)?\s*['"]([^'"]+)['"]/giu;
 /** A worker built from a URL. */
 const WORKER_URL = /\bnew\s+(?:Shared)?Worker\s*\(\s*['"]([^'"]+)['"]/gu;
 
@@ -230,6 +231,21 @@ describe('remoteReferences', () => {
     // A quoted tag body may contain a `>`; the attribute after it still counts.
     expect(remoteReferences('<link rel="next>page" href="https://cdn.example.com/a.css">')).toEqual(
       ['https://cdn.example.com/a.css'],
+    );
+    // `@import` is likewise case-insensitive, including the form with a media query after it.
+    expect(remoteReferences('@IMPORT "https://cdn.example.com/a.css";')).toEqual([
+      'https://cdn.example.com/a.css',
+    ]);
+    expect(remoteReferences("@Import 'https://cdn.example.com/a.css' screen;")).toEqual([
+      'https://cdn.example.com/a.css',
+    ]);
+  });
+
+  it('still reads a constructor call with unusual spacing as code, not CSS', () => {
+    // Unbounded whitespace in the lookbehind: a fixed count left these open.
+    expect(remoteReferences("const u = new     URL('https://cdn.example.com/');")).toEqual([]);
+    expect(remoteReferences("const u = new\n\n\t\t\t\t\tURL('https://cdn.example.com/');")).toEqual(
+      [],
     );
   });
 
