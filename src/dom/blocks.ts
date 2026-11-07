@@ -128,6 +128,38 @@ export function isOwnUi(element: Element): boolean {
   return OWN_UI_TAGS.has(element.tagName) || element.closest(OWN_UI_SELECTOR) !== null;
 }
 
+const EDITABLE_SELECTOR =
+  'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
+
+/** The field the reader is typing in, when the focus sits inside one. */
+export function focusedEditableField(active: Element | null | undefined): Element | null {
+  if (!active) return null;
+  return active.closest(EDITABLE_SELECTOR);
+}
+
+/**
+ * True when a page selection is really the text the reader typed into the focused field.
+ *
+ * A `textarea` reports its value through `window.getSelection()` on Ctrl+A or a drag, while
+ * the reported range sits on `<body>`. Without this check the value of a search box, a
+ * message box or a form is queued for translation, which is text the reader never asked to
+ * translate and may not expect a model to read. Only text the field actually holds is
+ * dropped, so a page that keeps an empty field focused can still have its prose translated.
+ */
+export function isTypedTextSelection(active: Element | null | undefined, text: string): boolean {
+  const field = focusedEditableField(active);
+  if (!field || text.length === 0) return false;
+
+  const value =
+    'value' in field && typeof (field as HTMLInputElement).value === 'string'
+      ? (field as HTMLInputElement).value
+      : (field.textContent ?? '');
+  if (value.length === 0) return false;
+  if (value.includes(text)) return true;
+  // A password field reports dots rather than its value.
+  return /^[•*]+$/u.test(text);
+}
+
 const OWN_UI_SELECTOR = [...OWN_UI_TAGS].join(', ').toLowerCase();
 
 export function isBlockElement(element: Element): boolean {

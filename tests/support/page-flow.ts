@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { vi } from 'vitest';
+import { uiShadow } from '@/dom/overlay';
 import { PageSession, type SessionPreferences } from '@/dom/session';
 import { InBrowserEngine } from '@/engine/in-browser/engine';
 import { SimRuntime, type SimCosts } from './sim-runtime';
@@ -147,7 +148,7 @@ export async function runFlow(input: {
     if (view.tokensPerSecond !== null) measured = true;
     if (view.pending > 0) {
       const bar = document.querySelector('sakutto-bar');
-      bars.push(bar?.shadowRoot?.textContent ?? bar?.textContent ?? '');
+      bars.push(uiShadow(bar)?.textContent ?? bar?.textContent ?? '');
       if (measured && view.tokensPerSecond === null) {
         ratelessSince ??= now;
         longestRateless = Math.max(longestRateless, now - ratelessSince);

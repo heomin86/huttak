@@ -28,6 +28,7 @@ import {
   isOwnUi,
   isScreenReaderOnly,
   isTranslationExcluded,
+  isTypedTextSelection,
 } from './blocks';
 import type { OverlayLabels } from './overlay';
 import { PageOverlay, PAGE_STYLE_ELEMENT_ID } from './overlay';
@@ -614,6 +615,8 @@ export class PageSession {
       if (text.length === 0) continue;
       const endpoint = selection.anchorNode ?? selection.focusNode;
       if (endpoint && this.overlay.contains(endpoint)) continue;
+      // A field the reader is typing in reports its value as the document selection.
+      if (isTypedTextSelection(doc.activeElement, text)) continue;
       let range: Range;
       try {
         range = selection.getRangeAt(0);

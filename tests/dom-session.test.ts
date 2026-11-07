@@ -2,8 +2,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildSegment } from '@/dom/segment';
 import { applyTranslation, restoreSegment } from '@/dom/render';
-import { SELECTION_ICON_PX, selectionIconBox, translationPageStyle } from '@/dom/overlay';
-import { translationStyleKeepsContrast } from '@/dom/overlay';
+import {
+  SELECTION_ICON_PX,
+  selectionIconBox,
+  translationPageStyle,
+  translationStyleKeepsContrast,
+  uiShadow,
+} from '@/dom/overlay';
 import { PageSession, type PageEngine, type SessionPreferences } from '@/dom/session';
 import { JobScheduler } from '@/engine/queue/scheduler';
 import type { TranslateOptions } from '@/engine/types';
@@ -294,7 +299,7 @@ describe('page session', () => {
     expect(document.querySelector('sakutto-note')).toBeNull();
     expect(document.body.textContent).not.toContain('簡易訳');
     document.querySelector('p')?.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
-    expect(document.querySelector('sakutto-tip')?.shadowRoot?.textContent).toContain(
+    expect(uiShadow(document.querySelector('sakutto-tip'))?.textContent).toContain(
       'Chrome の内蔵翻訳',
     );
   });
@@ -505,7 +510,7 @@ describe('page session', () => {
     let popover = '';
     for (let attempt = 0; attempt < 20 && !popover.includes('訳:Selected phrase'); attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 0));
-      popover = document.querySelector('sakutto-pop')?.shadowRoot?.textContent ?? '';
+      popover = uiShadow(document.querySelector('sakutto-pop'))?.textContent ?? '';
     }
 
     expect(order[0]).toContain('Hello world');
@@ -687,8 +692,8 @@ describe('page session', () => {
           new PointerEvent('pointerover', { bubbles: true, clientX: 24, clientY: 24 }),
         );
       const tip = document.querySelector('sakutto-tip');
-      expect(tip?.shadowRoot?.textContent).toContain('Osaka University, Osaka Metropolitan');
-      expect(tip?.shadowRoot?.textContent).not.toContain('UniversityOsaka');
+      expect(uiShadow(tip)?.textContent).toContain('Osaka University, Osaka Metropolitan');
+      expect(uiShadow(tip)?.textContent).not.toContain('UniversityOsaka');
       document.defaultView?.dispatchEvent(new Event('scroll'));
       expect(tip instanceof HTMLElement && tip.hidden).toBe(true);
 
@@ -799,7 +804,7 @@ describe('page session', () => {
     expect(order('end:First paragraph')).toBeGreaterThanOrEqual(0);
     expect(order('start:Selected phrase')).toBeGreaterThan(order('end:First paragraph'));
     expect(order('end:Selected phrase')).toBeLessThan(order('start:Second paragraph'));
-    expect(document.querySelector('sakutto-pop')?.shadowRoot?.textContent).toContain(
+    expect(uiShadow(document.querySelector('sakutto-pop'))?.textContent).toContain(
       '訳:Selected phrase',
     );
     expect(document.body.textContent).toContain('訳:Second paragraph');
@@ -1017,7 +1022,7 @@ describe('page session', () => {
     session.translateSelection('Selected phrase', new DOMRect(8, 8, 24, 12));
     await session.whenIdle();
 
-    const text = document.querySelector('sakutto-pop')?.shadowRoot?.textContent ?? '';
+    const text = uiShadow(document.querySelector('sakutto-pop'))?.textContent ?? '';
     expect(text).toContain('この選択範囲を翻訳できませんでした。');
     expect(text).not.toContain('翻訳しています…');
   });
@@ -1038,7 +1043,7 @@ describe('page session', () => {
     session.translateSelection('Selected phrase', new DOMRect(8, 8, 24, 12));
     await session.whenIdle();
 
-    const text = document.querySelector('sakutto-pop')?.shadowRoot?.textContent ?? '';
+    const text = uiShadow(document.querySelector('sakutto-pop'))?.textContent ?? '';
     expect(text).toContain('この選択範囲を翻訳できませんでした。');
     expect(text).not.toContain('途中');
   });
@@ -1058,7 +1063,7 @@ describe('page session', () => {
     session.translateSelection('Selected phrase', new DOMRect(8, 8, 24, 12));
     await session.whenIdle();
 
-    const text = document.querySelector('sakutto-pop')?.shadowRoot?.textContent ?? '';
+    const text = uiShadow(document.querySelector('sakutto-pop'))?.textContent ?? '';
     expect(text).toContain('この選択範囲を翻訳できませんでした。');
     expect(text).not.toContain('翻訳しています…');
   });
@@ -1257,13 +1262,91 @@ describe('page session', () => {
     await session.whenIdle();
 
     expect(seen).toContain('Osaka is a designated city.');
-    expect(document.querySelector('sakutto-pop')?.shadowRoot?.textContent).toContain('訳:');
+    expect(uiShadow(document.querySelector('sakutto-pop'))?.textContent).toContain('訳:');
 
     document.defaultView?.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
     );
     const popover = document.querySelector('sakutto-pop');
     expect(popover instanceof HTMLElement && popover.hidden).toBe(true);
+  });
+
+  /**
+   * Ctrl+A in a focused field reports the typed value through `window.getSelection()`, with
+   * the range on `<body>`. Nothing about that is a page passage, so it must not reach the
+   * engine: the reader did not ask for it, and the text may be private.
+   */
+  it('does not translate the value of the field the reader is typing in', async () => {
+    document.documentElement.lang = 'en';
+    document.body.innerHTML = '<textarea id="message">Draft to a friend</textarea>';
+    const seen: string[] = [];
+    const session = start(
+      document,
+      engineOf(async function* (segments) {
+        for (const segment of segments) {
+          seen.push(segment.text);
+          yield { id: segment.id, final: `訳:${segment.text}`, engine: 'plamo' as const };
+        }
+      }),
+    );
+
+    const field = document.querySelector('#message');
+    if (!(field instanceof HTMLTextAreaElement)) throw new Error('missing textarea');
+    field.focus();
+
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    const range = document.createRange();
+    range.selectNodeContents(document.body);
+    selection?.addRange(range);
+
+    document.defaultView?.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 's',
+        code: 'KeyS',
+        altKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await session.whenIdle();
+
+    expect(seen).not.toContain('Draft to a friend');
+    expect(seen).toEqual([]);
+  });
+
+  it('does not offer a selection icon for the value of a focused field', async () => {
+    document.documentElement.lang = 'en';
+    document.body.innerHTML = '<textarea id="message">Draft to a friend</textarea>';
+    const seen: string[] = [];
+    sessions.push(
+      start(
+        document,
+        engineOf(async function* (segments) {
+          for (const segment of segments) {
+            seen.push(segment.text);
+            yield { id: segment.id, final: `訳:${segment.text}`, engine: 'plamo' as const };
+          }
+        }),
+      ),
+    );
+
+    const field = document.querySelector('#message');
+    if (!(field instanceof HTMLTextAreaElement)) throw new Error('missing textarea');
+    field.focus();
+
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    const range = document.createRange();
+    range.selectNodeContents(document.body);
+    selection?.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    const icon = document.querySelector('sakutto-select');
+    expect(icon instanceof HTMLElement && icon.hidden).toBe(true);
+    expect(seen).toEqual([]);
   });
 
   it('starts a second pass after restore without waiting for the cancelled pass', async () => {
@@ -1349,10 +1432,11 @@ describe('page session', () => {
     await session.whenIdle();
 
     const bar = document.querySelector('sakutto-bar');
-    expect(bar?.shadowRoot?.textContent).toContain('翻訳しました。');
+    expect(bar?.shadowRoot).toBeNull();
+    expect(uiShadow(bar)?.textContent).toContain('翻訳しました。');
     expect(document.querySelector('sakutto-bar button')).toBeNull();
     expect(document.documentElement.style.paddingTop).toBe('40px');
-    const original = bar?.shadowRoot?.querySelector('button');
+    const original = uiShadow(bar)?.querySelector('button');
     expect(original).toBeInstanceOf(HTMLButtonElement);
     original?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
@@ -1523,7 +1607,7 @@ describe('page translation corrections', () => {
     document.querySelector('h2')?.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
     const tip = document.querySelector('sakutto-tip');
     expect(tip instanceof HTMLElement && tip.hidden).toBe(false);
-    expect(tip?.shadowRoot?.textContent).toContain('Title');
+    expect(uiShadow(tip)?.textContent).toContain('Title');
 
     document.querySelector('sakutto-tip')?.setAttribute('hidden', '');
     if (tip instanceof HTMLElement) tip.hidden = true;
@@ -1571,7 +1655,7 @@ describe('page translation corrections', () => {
 
     await session.translate();
     await session.whenIdle();
-    const always = document.querySelector('sakutto-bar')?.shadowRoot?.querySelectorAll('button')[1];
+    const always = uiShadow(document.querySelector('sakutto-bar'))?.querySelectorAll('button')[1];
     always?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(session.state().auto).toBe('ask');
@@ -1677,7 +1761,7 @@ describe('selection icon', () => {
   }
 
   function iconButton(): HTMLButtonElement {
-    const button = icon().shadowRoot?.querySelector('button');
+    const button = uiShadow(icon())?.querySelector('button');
     if (!(button instanceof HTMLButtonElement)) throw new Error('missing selection button');
     return button;
   }
@@ -1758,7 +1842,7 @@ describe('selection icon', () => {
       expect(seen).toEqual(['Osaka is a designated city.']);
 
       iconButton().dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-      expect(document.querySelector('sakutto-pop')?.shadowRoot?.textContent).toContain(
+      expect(uiShadow(document.querySelector('sakutto-pop'))?.textContent).toContain(
         '訳:Osaka is a designated city.',
       );
       expect(seen).toEqual(['Osaka is a designated city.']);
@@ -1848,7 +1932,7 @@ describe('selection icon', () => {
     );
     await session.whenIdle();
     expect(popover().hidden).toBe(false);
-    expect(popover().shadowRoot?.textContent).toContain('訳:Selected phrase');
+    expect(uiShadow(popover())?.textContent).toContain('訳:Selected phrase');
     expect(seen).toEqual(['Selected phrase']);
 
     document.body.innerHTML = '<p id="other">Another phrase</p>';
@@ -1857,7 +1941,7 @@ describe('selection icon', () => {
     await selectElement(other);
     await session.handle('selection');
     await session.whenIdle();
-    expect(popover().shadowRoot?.textContent).toContain('訳:Another phrase');
+    expect(uiShadow(popover())?.textContent).toContain('訳:Another phrase');
     expect(seen).toContain('Another phrase');
     expect(document.body.textContent).toContain('Another phrase');
   });
@@ -2507,7 +2591,7 @@ describe('whole-page coverage', () => {
     );
 
     const bar = document.querySelector('sakutto-bar');
-    expect(bar?.shadowRoot?.textContent).toContain('翻訳できない箇所が 1 件残っています。');
+    expect(uiShadow(bar)?.textContent).toContain('翻訳できない箇所が 1 件残っています。');
   });
 
   it('never reports a frozen citation or a language link as untranslated', async () => {

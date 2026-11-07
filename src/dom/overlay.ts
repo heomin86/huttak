@@ -224,6 +224,26 @@ const SELECTION_ICON_POLYGONS: readonly (readonly [string, string])[] = [
   ['87.52,87.52 92.27,82.77 87.52,94.24', '#f8fafc'],
 ];
 
+const uiShadows = new WeakMap<Element, ShadowRoot>();
+
+/**
+ * Shadow root of this extension's own UI.
+ *
+ * The root is closed. A page script can see the host element, and an open root would let
+ * that script read it, rewrite the label, or click it. The content script keeps the root
+ * here; the page's `shadowRoot` is null.
+ */
+export function uiShadow(host: Element | null | undefined): ShadowRoot | null {
+  if (!host) return null;
+  return uiShadows.get(host) ?? null;
+}
+
+function attachUiShadow(host: HTMLElement): ShadowRoot {
+  const shadow = host.attachShadow({ mode: 'closed' });
+  uiShadows.set(host, shadow);
+  return shadow;
+}
+
 /**
  * Drawn with DOM constructors. `innerHTML` and `DOMParser.parseFromString` are
  * TrustedHTML sinks, so either one throws on pages that require Trusted Types
@@ -372,7 +392,7 @@ export class PageOverlay {
     this.bar.style.left = '0';
     this.bar.style.right = '0';
     this.bar.style.height = '40px';
-    const shadow = this.bar.attachShadow({ mode: 'open' });
+    const shadow = attachUiShadow(this.bar);
     const style = doc.createElement('style');
     style.textContent = BAR_STYLE;
     const row = doc.createElement('div');
@@ -556,10 +576,10 @@ export class PageOverlay {
       this.iconHost.contains(node) ||
       this.bar === node ||
       this.bar.contains(node) ||
-      this.tipHost.shadowRoot?.contains(node) === true ||
-      this.popHost.shadowRoot?.contains(node) === true ||
-      this.iconHost.shadowRoot?.contains(node) === true ||
-      this.bar.shadowRoot?.contains(node) === true
+      uiShadow(this.tipHost)?.contains(node) === true ||
+      uiShadow(this.popHost)?.contains(node) === true ||
+      uiShadow(this.iconHost)?.contains(node) === true ||
+      uiShadow(this.bar)?.contains(node) === true
     );
   }
 
@@ -575,7 +595,7 @@ export class PageOverlay {
   }
 
   private mountSelectionIcon(host: HTMLElement): HTMLButtonElement {
-    const shadow = host.attachShadow({ mode: 'open' });
+    const shadow = attachUiShadow(host);
     const style = this.doc.createElement('style');
     style.textContent = ICON_STYLE;
     const button = this.doc.createElement('button');
@@ -621,7 +641,7 @@ export class PageOverlay {
     card: HTMLElement;
     button: HTMLButtonElement;
   } {
-    const shadow = host.attachShadow({ mode: 'open' });
+    const shadow = attachUiShadow(host);
     const style = this.doc.createElement('style');
     style.textContent = BUBBLE_STYLE;
     const card = this.doc.createElement('div');
@@ -665,7 +685,7 @@ export class PageOverlay {
     host.style.pointerEvents = interactive ? 'auto' : 'none';
     host.style.display = 'block';
     host.hidden = false;
-    const card = host.shadowRoot?.querySelector('.card');
+    const card = uiShadow(host)?.querySelector('.card');
     const cardWidth = card instanceof HTMLElement ? card.offsetWidth : 280;
     const cardHeight = card instanceof HTMLElement ? card.offsetHeight : 120;
     let left = rect.left;

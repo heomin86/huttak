@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   countTranslatableBlocks,
   isTranslationExcluded,
+  isTypedTextSelection,
   listTranslatableBlocks,
 } from '@/dom/blocks';
 
@@ -225,5 +226,38 @@ describe('layout wrappers that generate no box', () => {
     `;
     const blocks = listTranslatableBlocks(document).map((block) => block.textContent?.trim());
     expect(blocks).toEqual(['Visible copy']);
+  });
+
+  /**
+   * A focused field reports its value through `window.getSelection()` on Ctrl+A, while the
+   * range sits on `<body>`. The block walk never sees that value, so the selection path has
+   * to drop it, or the text a reader typed is queued for translation.
+   */
+  describe('typed text in a focused field', () => {
+    it('is recognised from the field value', () => {
+      document.body.innerHTML = '<textarea id="message">Draft to a friend</textarea>';
+      const field = document.querySelector('#message');
+      expect(isTypedTextSelection(field, 'Draft to a friend')).toBe(true);
+      expect(isTypedTextSelection(field, 'Draft')).toBe(true);
+    });
+
+    it('recognises a masked password value', () => {
+      document.body.innerHTML = '<input id="pw" type="password" value="hunter2">';
+      const field = document.querySelector('#pw');
+      expect(isTypedTextSelection(field, '•••••••')).toBe(true);
+    });
+
+    it('leaves page prose alone when an empty field has focus', () => {
+      document.body.innerHTML = '<input id="search"><p id="copy">Readable paragraph</p>';
+      const field = document.querySelector('#search');
+      expect(isTypedTextSelection(field, 'Readable paragraph')).toBe(false);
+      expect(isTypedTextSelection(null, 'Readable paragraph')).toBe(false);
+    });
+
+    it('covers a contenteditable region', () => {
+      document.body.innerHTML = '<div id="editor" contenteditable>Half written reply</div>';
+      const field = document.querySelector('#editor');
+      expect(isTypedTextSelection(field, 'Half written reply')).toBe(true);
+    });
   });
 });
