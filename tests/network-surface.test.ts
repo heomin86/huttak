@@ -37,10 +37,14 @@ function withoutComments(code: string): string {
   return code.replaceAll(/\/\*[\s\S]*?\*\//gu, '').replaceAll(/^\s*\/\/.*$/gmu, '');
 }
 
-const files = sources('src', /\.(?:ts|svelte)$/u).map((file) => ({
-  ...file,
-  code: withoutComments(file.code),
-}));
+/**
+ * Every file that can execute. `public` is read too: `gpu-probe.js` runs as a same-origin
+ * script in the offscreen page, so a `fetch` added there would sit outside the `src` tree
+ * the first version of this check scanned and never be seen.
+ */
+const files = [...sources('src', /\.(?:ts|svelte)$/u), ...sources('public', /\.(?:js|ts)$/u)].map(
+  (file) => ({ ...file, code: withoutComments(file.code) }),
+);
 
 /**
  * Markup and stylesheets, where a remote script, stylesheet or font is actually declared.
@@ -48,13 +52,45 @@ const files = sources('src', /\.(?:ts|svelte)$/u).map((file) => ({
  * `.svelte` and `.ts` both belong here: a component carries a `<style>` block, and a page
  * can be built from a template literal. The first version of this check read only the
  * TypeScript tree, so the place a remote resource is usually declared — the entry point's
- * HTML — was never opened. Reading every shape, then counting each one, means no single
+ * HTML — was never opened. Every shape is read, and the test counts each one, so no
  * extension can quietly fall out of the scan again.
  */
 const markup = [
   ...sources('src', /\.(?:ts|html|css|svelte)$/u),
   ...sources('public', /\.(?:html|css|js)$/u),
 ].map((file) => ({ ...file, code: withoutComments(file.code) }));
+
+/** A URL that leaves the extension's own origin, including a protocol-relative one. */
+const REMOTE_URL = /^(?:https?:)?\/\//iu;
+
+/** An attribute that names a resource the browser fetches. `data-src` is not one. */
+const RESOURCE_ATTRIBUTE =
+  /(?<![\w-])(?:src|href|srcset|poster)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/giu;
+const URL_FUNCTION = /url\(\s*['"]?([^'")\s]+)['"]?\s*\)/giu;
+const AT_IMPORT = /@import\s+(?:url\(\s*)?['"]?([^'")\s;]+)/giu;
+const DYNAMIC_IMPORT = /\bimport\s*\(\s*['"]([^'"]+)['"]/gu;
+
+/**
+ * Remote references in one file: an attribute, a CSS `url()`, an `@import`, or a dynamic
+ * `import()`. `srcset` holds a comma-separated list, so each entry is checked on its own,
+ * and a quoted value may contain a `>` without ending the attribute early.
+ */
+function remoteReferences(code: string): string[] {
+  const found: string[] = [];
+  const collect = (value: string | undefined): void => {
+    if (!value) return;
+    for (const entry of value.split(',')) {
+      const url = entry.trim().split(/\s+/u)[0] ?? '';
+      if (REMOTE_URL.test(url)) found.push(url);
+    }
+  };
+
+  for (const match of code.matchAll(RESOURCE_ATTRIBUTE)) collect(match[1] ?? match[2] ?? match[3]);
+  for (const match of code.matchAll(URL_FUNCTION)) collect(match[1]);
+  for (const match of code.matchAll(AT_IMPORT)) collect(match[1]);
+  for (const match of code.matchAll(DYNAMIC_IMPORT)) collect(match[1]);
+  return found;
+}
 
 const NETWORK_SINKS = [
   /\bXMLHttpRequest\b/u,
@@ -97,25 +133,20 @@ describe('network surface', () => {
   });
 
   it('does not add a remote script, stylesheet, or font to an extension page', () => {
-    // The declaration can sit in an entry point's HTML, a stylesheet, a `.svelte` `<style>`
-    // block, or a template literal in `.ts`, so every one of them is read. Counting by
-    // extension keeps the check from passing because a directory was scanned and found empty.
+    // Counting per extension keeps the check from passing because a directory was scanned
+    // and came back empty, and keeps `public` from dropping out of the set unnoticed.
     const count = (extension: RegExp): number =>
       markup.filter((file) => extension.test(file.path)).length;
-    expect(count(/\.html$/u)).toBeGreaterThan(0);
+    expect(count(/^src\/.*\.html$/u)).toBeGreaterThan(0);
     expect(count(/\.css$/u)).toBeGreaterThan(0);
     expect(count(/\.svelte$/u)).toBeGreaterThan(0);
     expect(count(/\.ts$/u)).toBeGreaterThan(0);
+    expect(count(/^public\/.*\.js$/u)).toBeGreaterThan(0);
 
-    const remote = markup.filter(
-      (file) =>
-        /<(?:script|link|img|iframe|source|video|audio|embed|object|track)\b[^>]*?(?<![\w-])(?:src|href|srcset)\s*=\s*['"]?(?:https?:)?\/\//iu.test(
-          file.code,
-        ) ||
-        /@import\s+(?:url\(\s*)?['"]?(?:https?:)?\/\//iu.test(file.code) ||
-        /url\(\s*['"]?(?:https?:)?\/\//iu.test(file.code),
-    );
+    const remote = markup
+      .map((file) => ({ path: file.path, urls: remoteReferences(file.code) }))
+      .filter((entry) => entry.urls.length > 0);
 
-    expect(remote.map((file) => file.path)).toEqual([]);
+    expect(remote).toEqual([]);
   });
 });
