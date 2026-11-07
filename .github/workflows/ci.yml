@@ -58,7 +58,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # A full clone: `tests/bench-fixtures.test.ts` reads `bench/history/pages.jsonl` and
+      # asks git for the commit each checked-in run names. A depth-1 checkout has no such
+      # object, so that test would fail on every pull request for a reason that is not
+      # about the change.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
