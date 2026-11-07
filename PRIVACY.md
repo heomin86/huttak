@@ -29,7 +29,7 @@ The code is `src/engine/model/catalog.ts` and `src/engine/model/download.ts`. Th
 
 `redirect: 'follow'` means the browser then requests the host Hugging Face names. On 2026-11-06 that host was `https://us.aws.cdn.hf.co/`. The region can differ. That CDN receives the IP address, the usual browser request headers, and the signed URL for the file. It does not receive the page text. The `Link` header also named `https://cas-server.xethub.hf.co/`. `fetch` does not follow `Link` headers, and the extension has no Xet client, so that host is not requested by this code.
 
-The 0.8B file is the default (573,123,200 bytes). The 2B file (1,807,199,392 bytes) is downloaded only after you choose it. The bytes land in a `.part` file in the same OPFS directory while the download runs. When it finishes, the file is read back and hashed against the pinned SHA-256; only a match is moved to its final name. A mismatch is deleted. An interrupted download leaves its `.part` file so the next attempt resumes from there. A later launch uses the stored file only when its size and the recorded digest still match the pin. The bytes are not hashed again on every launch.
+The 0.8B file is the default (573,123,200 bytes). The 2B file (1,807,199,392 bytes) is downloaded only after you choose it. The bytes land in a `.part` file in the same OPFS directory while the download runs. When it finishes, the file is read back and hashed against the pinned SHA-256; only a match is moved to its final name. A mismatch is deleted, and the download is retried once from the start. An interrupted download leaves its `.part` file so the next attempt resumes from there. A later launch uses the stored file only when its size and the recorded digest still match the pin. The bytes are not hashed again on every launch.
 
 ## Requests the extension does not make
 
@@ -98,7 +98,7 @@ MIT の著作権表示にある `jammaru` はリポジトリ上の名前であ�
 
 `redirect: 'follow'` のため、ブラウザは Hugging Face が示したホストへ続きます。2026-11-06 のホストは `https://us.aws.cdn.hf.co/` でした。地域によりホストは変わります。その CDN には、IP アドレス、通常のブラウザのヘッダー、ファイル用の署名付き URL が届きます。ページの本文は届きません。`Link` ヘッダーには `https://cas-server.xethub.hf.co/` も出ていました。`fetch` は `Link` をたどらず、この拡張機能に Xet のクライアントはないため、そのホストへは要求しません。
 
-標準は 0.8B（573,123,200 バイト）です。2B（1,807,199,392 バイト）は、利用者が選んだときだけ取得します。取得中、バイト列は同じ OPFS ディレクトリの `.part` ファイルへ書かれます。取得が終わると、そのファイルを読み戻してピン留めした SHA-256 と照合し、一致したものだけを最終的な名前へ移します。一致しなければ削除します。途中で止まった取得は `.part` ファイルを残すので、次はその続きから再開します。次に起動したときは、保存済みファイルのサイズと、記録したダイジェストがピンと一致するときだけ使います。起動のたびにバイト列をハッシュし直すことはありません。
+標準は 0.8B（573,123,200 バイト）です。2B（1,807,199,392 バイト）は、利用者が選んだときだけ取得します。取得中、バイト列は同じ OPFS ディレクトリの `.part` ファイルへ書かれます。取得が終わると、そのファイルを読み戻してピン留めした SHA-256 と照合し、一致したものだけを最終的な名前へ移します。一致しなければ削除し、先頭から一度だけ取得し直します。途中で止まった取得は `.part` ファイルを残すので、次はその続きから再開します。次に起動したときは、保存済みファイルのサイズと、記録したダイジェストがピンと一致するときだけ使います。起動のたびにバイト列をハッシュし直すことはありません。
 
 ## 拡張機能が行わない通信
 

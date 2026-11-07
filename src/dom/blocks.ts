@@ -138,18 +138,21 @@ const EDITABLE_SELECTOR = FIELD_SELECTORS.join(', ');
 /**
  * The field the reader is typing in, when the focus sits inside one.
  *
- * `document.activeElement` stops at a shadow host, so an open root has to be entered one
- * level at a time to reach the control that actually holds the caret. That matters for a
- * custom `<my-search>` element that wraps its own `<input>`.
+ * `document.activeElement` stops at a shadow host, so an open root has to be entered first:
+ * a custom `<my-search>` element that wraps its own `<input>` reports only the host. Walking
+ * down before asking `closest` matters — a host that sits inside a `<div contenteditable>`
+ * is itself inside an editable region, and asking the host first would answer with the
+ * wrapper, whose text is empty, and let the typed value through.
  */
 export function focusedEditableField(active: Element | null | undefined): Element | null {
   let element = active ?? null;
-  for (let depth = 0; element && depth < 8; depth += 1) {
-    const field = element.closest(EDITABLE_SELECTOR);
-    if (field) return field;
-    element = element.shadowRoot?.activeElement ?? null;
+  // Bounded only to survive a pathological page; each step enters one open shadow root.
+  for (let depth = 0; element && depth < 32; depth += 1) {
+    const inner = element.shadowRoot?.activeElement;
+    if (!inner) break;
+    element = inner;
   }
-  return null;
+  return element?.closest(EDITABLE_SELECTOR) ?? null;
 }
 
 /** What the reader has typed into a field. Duck-typed: an iframe field is another realm. */
@@ -182,11 +185,12 @@ export function isTypedTextSelection(active: Element | null | undefined, text: s
   if (value.length === 0) return false;
   if (value.includes(wanted)) return true;
   // A password input paints a mask instead of its value, and the document selection
-  // reports the mask. Only a password input is read this way: `* * *` in body copy is
-  // page text, not a secret.
+  // reports the mask. Only a password input is read this way: `***` in body copy is page
+  // text, not a secret. `.type` is the IDL property, which lowercases `type="PASSWORD"`;
+  // `getAttribute('type')` would miss that spelling.
   return (
     field.localName === 'input' &&
-    field.getAttribute('type') === 'password' &&
+    (field as HTMLInputElement).type === 'password' &&
     /^[\u2022*]+$/u.test(wanted)
   );
 }

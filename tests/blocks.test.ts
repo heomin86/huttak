@@ -248,9 +248,18 @@ describe('layout wrappers that generate no box', () => {
     });
 
     it('does not read a run of asterisks in body copy as a masked value', () => {
-      document.body.innerHTML = '<input id="search"><p id="copy">* * *</p>';
+      // The field has its own text, so the empty-field guard does not answer for it. The
+      // mask rule is what decided this before, and it dropped the prose selection.
+      document.body.innerHTML = '<input id="search" value="quarterly report"><p>***</p>';
       const field = document.querySelector('#search');
-      expect(isTypedTextSelection(field, '* * *')).toBe(false);
+      expect(isTypedTextSelection(field, '***')).toBe(false);
+      expect(isTypedTextSelection(field, 'quarterly report')).toBe(true);
+    });
+
+    it('recognises a masked value whatever case the type attribute uses', () => {
+      document.body.innerHTML = '<input id="pw" type="PASSWORD" value="hunter2">';
+      const field = document.querySelector('#pw');
+      expect(isTypedTextSelection(field, '•••••••')).toBe(true);
     });
 
     it('follows an open shadow root to the control holding the caret', () => {
@@ -265,6 +274,20 @@ describe('layout wrappers that generate no box', () => {
       // `document.activeElement` stops at the host, so the host alone is not enough.
       expect(document.activeElement).toBe(host);
       expect(isTypedTextSelection(host, 'typed in a custom element')).toBe(true);
+    });
+
+    it('still finds the control when the host sits in an editable wrapper', () => {
+      // Asking the host's own `closest` first answers with the wrapper, whose text is
+      // empty, and the typed value went through.
+      document.body.innerHTML = '<div contenteditable><my-input></my-input></div>';
+      const host = document.querySelector('my-input');
+      if (!host) throw new Error('missing host');
+      const input = document.createElement('input');
+      input.value = 'hidden from the wrapper';
+      host.attachShadow({ mode: 'open' }).append(input);
+      input.focus();
+
+      expect(isTypedTextSelection(host, 'hidden from the wrapper')).toBe(true);
     });
 
     it('leaves page prose alone when an empty field has focus', () => {

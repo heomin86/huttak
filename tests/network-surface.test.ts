@@ -42,8 +42,18 @@ const files = sources('src', /\.(?:ts|svelte)$/u).map((file) => ({
   code: withoutComments(file.code),
 }));
 
-/** Markup and stylesheets, where a remote script, stylesheet or font is actually declared. */
-const markup = [...sources('src', /\.(?:html|css)$/u), ...sources('public', /\.(?:html|css)$/u)];
+/**
+ * Markup and stylesheets, where a remote script, stylesheet or font is actually declared.
+ *
+ * `.svelte` belongs here too: the components carry `<style>` blocks and `<svelte:head>`
+ * links. The first version of this check read only `.ts` and `.svelte`, so the places a
+ * remote resource is actually declared — the entry point HTML and `src/ui` CSS — were never
+ * opened. Scanning all three means neither file set can lose what the other once covered.
+ */
+const markup = [
+  ...sources('src', /\.(?:html|css|svelte)$/u),
+  ...sources('public', /\.(?:html|css|js)$/u),
+].map((file) => ({ ...file, code: withoutComments(file.code) }));
 
 const NETWORK_SINKS = [
   /\bXMLHttpRequest\b/u,
