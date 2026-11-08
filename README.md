@@ -94,11 +94,11 @@ I started it because I wanted a translation extension like this myself, and I pu
 
 Continuing development still takes time and money, so I opened GitHub Sponsors. If you like Sakutto, I would be glad of your support.
 
-- **$5 a month**: a small monthly tier that supports ongoing development.
-- **$10 a month**: for people who use Sakutto every day, or in a team.
+- **$5 a month (Supporter)**: a plan for cheering on Sakutto's ongoing development.
+- **$10 a month (Backer)**: for anyone who wants to back it further. The amount changes nothing about the software.
 - **One-time**: any amount, once, if a subscription is more than you need.
 
-Whether you sponsor or not, Sakutto stays completely free and open source. https://github.com/sponsors/jammaru
+Neither tier adds limited features or priority support. The money goes towards new features, translation quality and speed, and ongoing maintenance. Whether you sponsor or not, Sakutto stays completely free and open source. https://github.com/sponsors/jammaru
 
 ## Licenses
 
