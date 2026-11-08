@@ -94,7 +94,7 @@ I started it because I wanted a translation extension like this myself, and I pu
 
 Continuing development still takes time and money, so I opened GitHub Sponsors. If you like Sakutto, I would be glad of your support.
 
-- **$3 a month**: a small monthly tier that supports ongoing development.
+- **$5 a month**: a small monthly tier that supports ongoing development.
 - **$10 a month**: for people who use Sakutto every day, or in a team.
 - **One-time**: any amount, once, if a subscription is more than you need.
 
