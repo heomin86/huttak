@@ -12,6 +12,7 @@ import {
   serializeTranslateOptions,
 } from '@/engine/offscreen/protocol';
 import type { TranslateOptions } from '@/engine/types';
+import { MAX_GLOSSARY_ENTRIES, MAX_GLOSSARY_MESSAGE_ENTRIES } from '@/shared/glossary';
 
 const OPTIONS: TranslateOptions = {
   tgt: 'ja',
@@ -112,7 +113,32 @@ describe('engine host protocol', () => {
     expect(isEngineHostRequest(request({ context: 'x'.repeat(20_001) }))).toBe(false);
     expect(
       isEngineHostRequest(
-        request({ glossary: Array.from({ length: 1001 }, () => ({ source: 'a', target: 'b' })) }),
+        request({
+          glossary: Array.from({ length: MAX_GLOSSARY_ENTRIES }, (_, index) => ({
+            source: `term-${String(index)}`,
+            target: `訳-${String(index)}`,
+          })),
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isEngineHostRequest(
+        request({
+          glossary: Array.from({ length: MAX_GLOSSARY_MESSAGE_ENTRIES }, (_, index) => ({
+            source: `term-${String(index)}`,
+            target: `訳-${String(index)}`,
+          })),
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isEngineHostRequest(
+        request({
+          glossary: Array.from({ length: MAX_GLOSSARY_MESSAGE_ENTRIES + 1 }, () => ({
+            source: 'a',
+            target: 'b',
+          })),
+        }),
       ),
     ).toBe(false);
     expect(

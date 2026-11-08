@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_GLOSSARY_ENTRIES } from '@/shared/glossary';
 import { displayLanguage, resolveTargetLanguage } from '@/shared/languages';
 import {
   DEFAULT_SETTINGS,
@@ -155,6 +156,25 @@ describe('settings defaults', () => {
         highQualityDismissed: true,
       }),
     );
+  });
+
+  it('keeps a 5000-entry glossary when repairing other settings', () => {
+    const glossary = Array.from({ length: MAX_GLOSSARY_ENTRIES }, (_, index) => ({
+      source: `term-${String(index)}`,
+      target: `訳-${String(index)}`,
+    }));
+    const settings = normalizeSettings(
+      {
+        schemaVersion: SETTINGS_SCHEMA_VERSION,
+        targetLanguage: 'xx',
+        glossary,
+      },
+      'en-US',
+    );
+
+    expect(settings.glossary).toEqual(glossary);
+    expect(settings.glossary).toHaveLength(MAX_GLOSSARY_ENTRIES);
+    expect(settings.targetLanguage).toBe('en');
   });
 
   it('keeps consent written before the age notice was renamed', () => {

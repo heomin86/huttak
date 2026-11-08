@@ -116,8 +116,8 @@ content script は `src/entrypoints/content.ts` の `registration: 'runtime'` �
 
 ## 端末に残るもの
 
-- `chrome.storage.local` の `settings`: 訳先、文体、表示、同意、用語集、その他の設定（`src/shared/storage.ts`）
-- `chrome.storage.local` の `siteRules`: ホストごとの自動翻訳、表示、訳先、用語集（`src/dom/sites.ts`）
+- `chrome.storage.local` の `settings`: 訳先、文体、表示、同意、用語集、その他の設定（`src/shared/storage.ts`）。用語集は1リストあたり最大 5,000 件（`src/shared/glossary.ts`）。この上限は製品プランの枠ではなく、巨大な CSV や settings JSON を抑えるためのものです。`unlimitedStorage` があるため容量そのものは足り、翻訳プロンプトにはそのセグメントに出現する語だけを入れます
+- `chrome.storage.local` の `siteRules`: ホストごとの自動翻訳、表示、訳先、用語集（`src/dom/sites.ts`）。サイト用語集も同じ 5,000 件。翻訳メッセージはグローバルとサイトを合わせた最大 10,000 件まで受け付けます（`src/engine/offscreen/protocol.ts`）
 - `chrome.storage.local` の `qualitySample`: 固定段落のモデル id、所要時間、時刻。ページ本文は入れません（`src/shared/quality.ts`、段落は `src/engine/model/suggestion.ts` の `QUALITY_PARAGRAPH`）
 - `chrome.storage.session`: WebGPU の可否、cross-origin isolation、ハードウェア並列数の短いキャッシュ
 - OPFS の `sakutto` ディレクトリ: モデルファイル（`src/engine/model/file-store.ts`）

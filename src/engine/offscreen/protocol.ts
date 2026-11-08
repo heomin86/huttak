@@ -9,6 +9,7 @@ import type {
   TranslationChunk,
 } from '../types';
 import { isModelStatus, type ModelStatus } from '../../shared/engine-status';
+import { MAX_GLOSSARY_MESSAGE_ENTRIES, MAX_GLOSSARY_TEXT } from '../../shared/glossary';
 import { isTargetLanguage } from '../../shared/languages';
 import { isTierPreference, type TierPreference } from '../../shared/settings';
 
@@ -235,8 +236,6 @@ const MAX_SEGMENTS = 2000;
 const MAX_SEGMENT_ID = 200;
 const MAX_SEGMENT_TEXT = 20_000;
 const MAX_CONTEXT_TEXT = 20_000;
-const MAX_GLOSSARY_ENTRIES = 1000;
-const MAX_GLOSSARY_TEXT = 4096;
 const MAX_LANGUAGE_TAG = 35;
 const MAX_PRIORITY = 100;
 
@@ -251,7 +250,7 @@ function isBoundedText(value: unknown, maximum: number): value is string {
 function isGlossary(value: unknown): value is GlossaryEntry[] {
   return (
     Array.isArray(value) &&
-    value.length <= MAX_GLOSSARY_ENTRIES &&
+    value.length <= MAX_GLOSSARY_MESSAGE_ENTRIES &&
     value.every(
       (entry) =>
         isRecord(entry) &&

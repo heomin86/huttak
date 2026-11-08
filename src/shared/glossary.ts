@@ -1,8 +1,25 @@
 import type { GlossaryEntry } from '@/engine/types';
 import { isRecord } from './object';
 
-const MAX_ENTRIES = 1000;
-const MAX_TEXT = 4096;
+/**
+ * Ceiling for one stored glossary (settings, or one site rule) and for CSV import.
+ *
+ * 5000 is large enough to feel unlimited in ordinary use. It is not a product-plan
+ * quota: chrome.storage.local already has `unlimitedStorage`, and the translation
+ * prompt only includes terms that appear in the current segment. The number exists
+ * so a huge CSV cannot freeze the options page or grow the settings JSON without
+ * bound. Existing glossaries below this ceiling keep every row.
+ */
+export const MAX_GLOSSARY_ENTRIES = 5000;
+
+/**
+ * Offscreen translate messages may carry a merged global+site glossary, so the
+ * protocol bound is two stored lists. Prompt packing still filters to terms that
+ * appear in the segment; this bound only rejects oversized messages.
+ */
+export const MAX_GLOSSARY_MESSAGE_ENTRIES = MAX_GLOSSARY_ENTRIES * 2;
+
+export const MAX_GLOSSARY_TEXT = 4096;
 
 export function normalizeGlossary(value: unknown): GlossaryEntry[] {
   if (!Array.isArray(value)) return [];
@@ -13,9 +30,16 @@ export function normalizeGlossary(value: unknown): GlossaryEntry[] {
     if (typeof entry.source !== 'string' || typeof entry.target !== 'string') continue;
     const source = entry.source.trim();
     const target = entry.target.trim();
-    if (!source || !target || source.length > MAX_TEXT || target.length > MAX_TEXT) continue;
+    if (
+      !source ||
+      !target ||
+      source.length > MAX_GLOSSARY_TEXT ||
+      target.length > MAX_GLOSSARY_TEXT
+    ) {
+      continue;
+    }
     entries.push({ source, target });
-    if (entries.length >= MAX_ENTRIES) break;
+    if (entries.length >= MAX_GLOSSARY_ENTRIES) break;
   }
   return entries;
 }
@@ -46,8 +70,9 @@ export function parseGlossary(csv: string): GlossaryEntry[] {
     ) {
       continue;
     }
+    if (source.length > MAX_GLOSSARY_TEXT || target.length > MAX_GLOSSARY_TEXT) continue;
     entries.push({ source, target });
-    if (entries.length >= MAX_ENTRIES) break;
+    if (entries.length >= MAX_GLOSSARY_ENTRIES) break;
   }
 
   return entries;

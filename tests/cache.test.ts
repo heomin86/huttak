@@ -4,6 +4,7 @@ import { TranslationCache } from '@/engine/cache/cache';
 import { buildTranslationCacheKey, glossaryVersion } from '@/engine/cache/key';
 import { MemoryTranslationCacheStore } from '@/engine/cache/store';
 import type { TranslateOptions } from '@/engine/types';
+import { MAX_GLOSSARY_ENTRIES } from '@/shared/glossary';
 import { collectChunks, fakeEngine } from './support/fakes';
 
 function options(overrides: Partial<TranslateOptions> = {}): TranslateOptions {
@@ -71,6 +72,16 @@ describe('translation cache keys', () => {
         { source: 'c', target: 'd' },
       ]),
     );
+
+    const large = Array.from({ length: MAX_GLOSSARY_ENTRIES }, (_, index) => ({
+      source: `term-${String(index)}`,
+      target: `訳-${String(index)}`,
+    }));
+    const tweaked = large.map((entry, index) =>
+      index === MAX_GLOSSARY_ENTRIES - 1 ? { source: entry.source, target: '別訳' } : entry,
+    );
+    expect(glossaryVersion(large)).toBe(glossaryVersion(large));
+    expect(glossaryVersion(large)).not.toBe(glossaryVersion(tweaked));
   });
 });
 

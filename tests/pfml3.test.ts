@@ -100,6 +100,23 @@ describe('PFML3 prompt', () => {
     ]);
   });
 
+  it('packs every matching glossary row into the prompt instead of truncating it', () => {
+    const glossary = Array.from({ length: 80 }, (_, index) => ({
+      source: `term-${String(index)}`,
+      target: `訳-${String(index)}`,
+    }));
+    const prompt = buildTranslationPrompt({
+      text: glossary.map((entry) => entry.source).join(' '),
+      tgt: 'ja',
+      glossary,
+    });
+
+    expect(sanitizeGlossary(glossary)).toHaveLength(80);
+    expect(prompt.match(/<\|plamo:index\|>/g)).toHaveLength(80);
+    expect(prompt).toContain('<|plamo:index|>term-0<|plamo:item|>訳-0');
+    expect(prompt).toContain('<|plamo:index|>term-79<|plamo:item|>訳-79');
+  });
+
   it('uses the documented stop tokens', () => {
     expect(TRANSLATION_STOP_TOKENS).toEqual(['<|plamo:tag|>', '<|plamo:bos|>']);
   });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { InBrowserEngine } from '@/engine/in-browser/engine';
 import type { TranslateOptions, TranslationChunk } from '@/engine/types';
+import { MAX_GLOSSARY_ENTRIES } from '@/shared/glossary';
 import { collectChunks, FakeRuntime } from './support/fakes';
 import { promptSource } from './support/sim-runtime';
 
@@ -74,6 +75,28 @@ describe('InBrowserEngine', () => {
     );
 
     expect(runtime.requests[0]?.prompt ?? '').not.toContain('glossary');
+  });
+
+  it('packs only the matching rows from a 5000-entry glossary', async () => {
+    const runtime = new FakeRuntime(() => 'こんにちは');
+    const engine = new InBrowserEngine(runtime);
+    const glossary = Array.from({ length: MAX_GLOSSARY_ENTRIES }, (_, index) => ({
+      source: `term-${String(index)}`,
+      target: `訳-${String(index)}`,
+    }));
+    glossary[42] = { source: 'Runner', target: 'ランナー機能' };
+
+    await collectChunks(
+      engine.translate([{ id: 'a', text: 'Hello Runner.' }], options({ glossary })),
+    );
+
+    const prompt = runtime.requests[0]?.prompt ?? '';
+    expect(prompt).toContain(
+      '<|plamo:tag|>glossary<|plamo:index|>Runner<|plamo:item|>ランナー機能',
+    );
+    expect(prompt.match(/<\|plamo:index\|>/g)).toHaveLength(1);
+    expect(prompt).not.toContain('term-0');
+    expect(prompt).not.toContain(`term-${String(MAX_GLOSSARY_ENTRIES - 1)}`);
   });
 
   it('translates an ordinary paragraph as one prompt, not one sentence per line', async () => {
