@@ -1,3 +1,4 @@
+import { MAX_SEGMENT_TEXT } from '@/engine/offscreen/protocol';
 import { isChromeOnlyLanguage, isTargetLanguage, type TargetLanguage } from './languages';
 
 export type TypedDirection = 'to-ja' | 'to-other';
@@ -91,8 +92,12 @@ export function isTranslateShortcut(event: {
   return event.ctrlKey === true || event.metaKey === true;
 }
 
-/** A character count that fits the model's own per-segment ceiling. */
-export const MAX_TYPED_CHARS = 20_000;
+/**
+ * Per-request ceiling for the typed box. It matches `MAX_SEGMENT_TEXT` so a request the
+ * UI accepts is not rejected by the offscreen protocol. The engine still splits the text
+ * into prompt-sized pieces.
+ */
+export const MAX_TYPED_CHARS = MAX_SEGMENT_TEXT;
 
 /**
  * Trims the pasted text the way the page collector trims a block: runs of whitespace collapse

@@ -234,7 +234,14 @@ export type TranslationServerMessage =
 
 const MAX_SEGMENTS = 2000;
 const MAX_SEGMENT_ID = 200;
-const MAX_SEGMENT_TEXT = 20_000;
+/**
+ * Per-segment text in an offscreen message. Typed input is one segment, so this is also
+ * the typed-box ceiling. 100_000 is a sanity bound for one chrome.runtime message, not a
+ * billing quota: local translation has no per-character cost. The model still splits the
+ * text into prompt-sized pieces. chrome.runtime messages can be tens of MB; 100k
+ * characters is far below that.
+ */
+export const MAX_SEGMENT_TEXT = 100_000;
 const MAX_CONTEXT_TEXT = 20_000;
 const MAX_LANGUAGE_TAG = 35;
 const MAX_PRIORITY = 100;

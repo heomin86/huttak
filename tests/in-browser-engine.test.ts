@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { InBrowserEngine } from '@/engine/in-browser/engine';
 import type { TranslateOptions, TranslationChunk } from '@/engine/types';
+import { MAX_SEGMENT_TEXT } from '@/engine/offscreen/protocol';
 import { MAX_GLOSSARY_ENTRIES } from '@/shared/glossary';
 import { collectChunks, FakeRuntime } from './support/fakes';
 import { promptSource } from './support/sim-runtime';
@@ -137,6 +138,21 @@ describe('InBrowserEngine', () => {
     const final = finalChunks(chunks)[0]?.final ?? '';
     expect(final).toBe(runtime.requests.map((_, index) => `訳${String(index + 1)}。`).join(''));
     expect(deltaText(chunks)).toBe(final);
+  });
+
+  it('translates a typed-length segment above the old 20,000-character ceiling', async () => {
+    const runtime = new FakeRuntime(() => '訳。');
+    const engine = new InBrowserEngine(runtime);
+    const sentence = 'This sentence explains one more step of the long procedure in detail. ';
+    const text = sentence.repeat(320).trim();
+    expect(text.length).toBeGreaterThan(20_000);
+    expect(text.length).toBeLessThanOrEqual(MAX_SEGMENT_TEXT);
+
+    const chunks = await collectChunks(engine.translate([{ id: 'typed', text }], options()));
+
+    expect(runtime.requests.length).toBeGreaterThan(1);
+    expect(finalChunks(chunks)[0]?.id).toBe('typed');
+    expect((finalChunks(chunks)[0]?.final ?? '').length).toBeGreaterThan(0);
   });
 
   it('batches short segments into one newline request', async () => {

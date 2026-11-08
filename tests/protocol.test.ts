@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EngineError } from '@/engine/errors';
 import {
+  MAX_SEGMENT_TEXT,
   deserializeTranslateOptions,
   errorFromPayload,
   errorPayload,
@@ -153,7 +154,23 @@ describe('engine host protocol', () => {
       isEngineHostRequest({
         type: 'translate',
         requestId: 'r1',
-        segments: [{ id: 'a', text: 'x'.repeat(20_001) }],
+        segments: [{ id: 'a', text: 'x'.repeat(20_000) }],
+        options,
+      }),
+    ).toBe(true);
+    expect(
+      isEngineHostRequest({
+        type: 'translate',
+        requestId: 'r1',
+        segments: [{ id: 'a', text: 'x'.repeat(MAX_SEGMENT_TEXT) }],
+        options,
+      }),
+    ).toBe(true);
+    expect(
+      isEngineHostRequest({
+        type: 'translate',
+        requestId: 'r1',
+        segments: [{ id: 'a', text: 'x'.repeat(MAX_SEGMENT_TEXT + 1) }],
         options,
       }),
     ).toBe(false);

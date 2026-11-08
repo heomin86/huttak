@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_SEGMENT_TEXT } from '@/engine/offscreen/protocol';
 import {
   MAX_TYPED_CHARS,
   copyTranslation,
@@ -100,9 +101,15 @@ describe('typed input', () => {
   });
 
   it('keeps the per-request ceiling in step with the engine protocol', () => {
-    // `MAX_SEGMENT_TEXT` in the offscreen protocol is 20,000 characters; a longer typed
-    // segment would be rejected before it reached the model.
-    expect(MAX_TYPED_CHARS).toBe(20_000);
+    // A longer typed segment would be rejected before it reached the model.
+    expect(MAX_TYPED_CHARS).toBe(MAX_SEGMENT_TEXT);
+    expect(MAX_TYPED_CHARS).toBe(100_000);
+  });
+
+  it('still accepts a 20,000-character paste that used to be the ceiling', () => {
+    const previousCeiling = 'x'.repeat(20_000);
+    expect(normalizeTypedInput(previousCeiling)).toHaveLength(20_000);
+    expect(previousCeiling.length).toBeLessThanOrEqual(MAX_TYPED_CHARS);
   });
 });
 

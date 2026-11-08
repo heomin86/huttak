@@ -123,6 +123,8 @@ content script は `src/entrypoints/content.ts` の `registration: 'runtime'` �
 - OPFS の `sakutto` ディレクトリ: モデルファイル（`src/engine/model/file-store.ts`）
 - IndexedDB `sakutto-translations`: 訳文、エンジン種別、時刻。最大 5,000 件。キーは原文の SHA-256 と用語集のハッシュで、原文そのものはキーに入れません（`src/engine/cache/store.ts`、`src/engine/cache/key.ts`）
 
+入力翻訳（`typed.html`）は1リクエストあたり最大 100,000 文字です（`src/shared/typed-translation.ts` の `MAX_TYPED_CHARS`、offscreen プロトコルの `MAX_SEGMENT_TEXT`）。この上限は文字課金ではなく、1件の chrome.runtime メッセージを抑えるためのものです。モデルは従来どおり段落サイズに分割して訳します。ページの周辺文脈（`context`）はこれまで通り最大 20,000 文字です。
+
 `input`、`textarea`、`select`、編集できる領域は翻訳対象から外します（`src/dom/blocks.ts`）。
 
 ## 翻訳が端末内であることの範囲
