@@ -183,9 +183,16 @@ describe('release command', () => {
     expect(new Set(versions).size).toBe(versions.length);
     for (const version of versions) {
       expect(() => parseVersion(version)).not.toThrow();
-      expect(extractChangelogSection(changelog, version)).toMatch(
-        /^## \[[^\]]+\] - \d{4}-\d{2}-\d{2}\n\n- \S/,
-      );
+      // `pnpm release` writes the bullets straight after the heading. A section that was
+      // edited by hand may group them under `### Features` and `### Bug Fixes`, so the
+      // bullets may also follow a group heading. Either way, the section has to carry one.
+      const section = extractChangelogSection(changelog, version);
+      expect(section).toMatch(/^## \[[^\]]+\] - \d{4}-\d{2}-\d{2}\n/u);
+      expect(section).toMatch(/^- \S/mu);
+      for (const line of section.split('\n').slice(1)) {
+        if (line.length === 0) continue;
+        expect(line, `${version}: ${line}`).toMatch(/^(?:- \S|### \S)/u);
+      }
     }
   });
 
