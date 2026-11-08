@@ -88,13 +88,17 @@ Optional host permissions (`https://*/*` and `http://*/*`) are requested only wh
 
 ## Support
 
-Sakutto is free and has no ads or paid features. I write it in my own time, and the 0.8B model and the benchmarks are the part that takes the longest. If the extension saves you time, you can sponsor it through GitHub Sponsors:
+There is no monetisation point in Sakutto. It is completely free, with no ads and no paid features.
 
-- **$3 a month**: a thank-you that keeps the translation runtime and the benchmarks maintained.
-- **$10 a month**: for people who use Sakutto every day or in a team and want to support the upkeep.
-- **One-time**: any amount, if a subscription is more than you need.
+I started it because I wanted a translation extension like this myself, and I published it because it turned out to be needed by more people than I expected. I have no plans to charge for it or to add ads.
 
-Sponsorship buys no features, no priority support, and no different licence: Sakutto stays MIT and free for everyone. https://github.com/sponsors/jammaru
+Continuing development still takes time and money, so I opened GitHub Sponsors. If you like Sakutto, I would be glad of your support.
+
+- **$3 a month**: a small monthly tier that supports ongoing development.
+- **$10 a month**: for people who use Sakutto every day, or in a team.
+- **One-time**: any amount, once, if a subscription is more than you need.
+
+Whether you sponsor or not, Sakutto stays completely free and open source. https://github.com/sponsors/jammaru
 
 ## Licenses
 
