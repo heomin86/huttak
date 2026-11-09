@@ -106,12 +106,6 @@ pnpm zip            # .output에 Chrome 웹 스토어용 zip
 
 `pnpm build:wllama`는 고정된 wllama 커밋 `d275dac`를 `emscripten/emsdk:4.0.20` 컨테이너 안에서 컴파일합니다. wasm, worker, 모델 가중치는 커밋하지 않습니다. 이 빌드를 확인하기 전에는 `pnpm build`와 `pnpm zip`이 실행되지 않습니다.
 
-로컬 서버 엔진만 쓸 거라면 번역 런타임 빌드 없이 가짜 엔진으로 빌드해도 됩니다.
-
-```bash
-SAKUTTO_FAKE_ENGINE=1 pnpm exec wxt build
-```
-
 개발과 검사:
 
 ```bash
