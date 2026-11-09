@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { crc32 } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
+import { MARK_BACKGROUND, MARK_PATHS } from '@/dom/mark.generated';
 
 const SIZES = [16, 32, 48, 128] as const;
 const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -42,5 +43,22 @@ describe('generated icons', () => {
 
     expect(chunks[0]?.data.readUInt32BE(0)).toBe(size);
     expect(chunks[0]?.data.readUInt32BE(4)).toBe(size);
+  });
+});
+
+describe('page overlay mark', () => {
+  /**
+   * The drag-to-translate button draws the mark inline. It kept Sakutto's folded strip after
+   * the toolbar icons changed, so it is now generated with them and checked against them.
+   */
+  it('draws the same shapes as the toolbar icon', () => {
+    const svg = readFileSync(new URL('../scripts/icon.svg', import.meta.url), 'utf8');
+    const shapes = [...svg.matchAll(/<path d="([^"]+)" fill="([^"]+)"/gu)].map((match) => [
+      match[1],
+      match[2],
+    ]);
+    expect(MARK_PATHS).toEqual(shapes);
+    expect(svg).toContain(`fill="${MARK_BACKGROUND}"`);
+    expect(svg).toContain('<title id="title">Huttak</title>');
   });
 });

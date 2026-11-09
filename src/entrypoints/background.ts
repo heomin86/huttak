@@ -3,6 +3,7 @@ import { defineBackground } from 'wxt/utils/define-background';
 import { EngineClient } from '@/background/engine-client';
 import { OffscreenController } from '@/background/offscreen-lifecycle';
 import { installPageActions } from '@/background/page-actions';
+import { installSelectionEverywhere } from '@/background/selection-everywhere';
 import { broadcastModelProgress, shouldWarmDownloadedModel } from '@/background/progress-broadcast';
 import { measureQuality } from '@/background/quality';
 import { TranslationBroker } from '@/background/translation-broker';
@@ -64,6 +65,7 @@ export default defineBackground(() => {
 
   broker.start();
   installPageActions(broker);
+  installSelectionEverywhere();
 
   async function readCachedCapabilities(): Promise<EngineCapabilities | null> {
     if (capabilitiesCache) return capabilitiesCache;

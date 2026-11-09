@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MARK_PATHS } from '@/dom/mark.generated';
 import { buildSegment } from '@/dom/segment';
 import { applyTranslation, restoreSegment } from '@/dom/render';
 import {
@@ -1832,7 +1833,8 @@ describe('selection icon', () => {
       ).toBe(false);
       expect(iconButton().getAttribute('aria-label')).toBe('選択したテキストを翻訳します');
       expect(iconButton().querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 128 128');
-      expect(iconButton().querySelectorAll('polygon')).toHaveLength(10);
+      expect(iconButton().querySelectorAll('path')).toHaveLength(MARK_PATHS.length);
+      expect(iconButton().querySelectorAll('polygon')).toHaveLength(0);
       const popover = document.querySelector('sakutto-pop');
       expect(popover instanceof HTMLElement && popover.hidden).toBe(true);
 

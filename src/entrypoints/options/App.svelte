@@ -27,6 +27,7 @@
   import ModelManager from '@/ui/ModelManager.svelte';
   import { runtimeLabel } from '@/ui/runtime-label';
   import LocalEngineField from '@/ui/LocalEngineField.svelte';
+  import SelectionEverywhereField from '@/ui/SelectionEverywhereField.svelte';
   import SettingsFields from '@/ui/SettingsFields.svelte';
 
   type SettingsError = 'load' | 'save' | null;
@@ -223,6 +224,7 @@
     {#if settings}
       <SettingsFields {settings} {uiLanguage} onChange={updateSettings} />
       <LocalEngineField {settings} onChange={updateSettings} />
+      <SelectionEverywhereField {settings} onChange={updateSettings} />
       <p class="muted help">{t('optionsDefaultHint')}</p>
       {#if settingsError === 'save'}
         <p class="error" role="alert">{t('errorSaveSettings')}</p>

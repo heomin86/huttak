@@ -27,6 +27,7 @@ function stored(overrides: Partial<Settings> = {}): Settings {
     pace: 'quality',
     engine: 'plamo',
     localServerUrl: 'http://127.0.0.1:8080',
+    selectionEverywhere: false,
     ...overrides,
   };
 }
