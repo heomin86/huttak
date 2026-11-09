@@ -140,7 +140,8 @@ describe('bench fixtures', () => {
     const count = BENCH_PAGES.length;
     const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
     const claims: Array<[string, string]> = [
-      ['README.md', `${words[count] ?? String(count)} fixtures`],
+      ['README.md', `고정 페이지 ${String(count)}개`],
+      ['README.en.md', `${words[count] ?? String(count)} fixtures`],
       ['README.ja.md', `${String(count)} つのページ`],
     ];
     for (const [file, claim] of claims) {
