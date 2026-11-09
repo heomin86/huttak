@@ -831,5 +831,17 @@
   "runtimeLocal": {
     "message": "ローカルサーバー",
     "description": "Local llama.cpp server engine."
+  },
+  "selectionEverywhereLabel": {
+    "message": "すべてのサイトでドラッグ翻訳アイコンを表示",
+    "description": "Option: run the content script on every site for the selection icon."
+  },
+  "selectionEverywhereHelp": {
+    "message": "既定ではオフです。オンにすると、すべてのサイトへのアクセスを求め、ページを先に翻訳しなくても、テキストを選ぶとすぐにアイコンが出ます。オンにする前に開いていたページは再読み込みが必要です。オフにするとアクセスを返します。",
+    "description": "Option: run the content script on every site for the selection icon."
+  },
+  "selectionEverywhereDenied": {
+    "message": "すべてのサイトへのアクセスが許可されなかったため、オフのままです。",
+    "description": "Option: run the content script on every site for the selection icon."
   }
 }

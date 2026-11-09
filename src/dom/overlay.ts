@@ -1,4 +1,5 @@
 import type { EngineKind } from '@/engine/types';
+import { MARK_BACKGROUND, MARK_PATHS } from './mark.generated';
 
 export interface OverlayLabels {
   original: string;
@@ -212,20 +213,6 @@ export function selectionIconBox(
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-/** Folded-strip mark. Same polygons as scripts/icon.svg. */
-const SELECTION_ICON_POLYGONS: readonly (readonly [string, string])[] = [
-  ['87.52,33.76 40.48,33.76 40.48,47.2 87.52,47.2', '#7dd3fc'],
-  ['87.52,47.2 104.32,40.48 87.52,33.76', '#7dd3fc'],
-  ['35.73,45.23 59.25,68.75 68.75,59.25 45.23,35.73', '#7dd3fc'],
-  ['40.48,40.48 40.48,33.76 35.73,45.23', '#7dd3fc'],
-  ['40.48,40.48 40.48,47.2 45.23,35.73', '#7dd3fc'],
-  ['59.25,68.75 82.77,92.27 92.27,82.77 68.75,59.25', '#f8fafc'],
-  ['87.52,80.8 40.48,80.8 40.48,94.24 87.52,94.24', '#f8fafc'],
-  ['40.48,80.8 23.68,87.52 40.48,94.24', '#f8fafc'],
-  ['87.52,87.52 82.77,92.27 87.52,80.8', '#f8fafc'],
-  ['87.52,87.52 92.27,82.77 87.52,94.24', '#f8fafc'],
-];
-
 const uiShadows = new WeakMap<Element, ShadowRoot>();
 
 /**
@@ -258,13 +245,14 @@ function appendSelectionIcon(doc: Document, button: HTMLButtonElement): void {
   const rect = doc.createElementNS(SVG_NS, 'rect');
   rect.setAttribute('width', '128');
   rect.setAttribute('height', '128');
-  rect.setAttribute('fill', '#101828');
+  rect.setAttribute('fill', MARK_BACKGROUND);
   svg.append(rect);
-  for (const [points, fill] of SELECTION_ICON_POLYGONS) {
-    const polygon = doc.createElementNS(SVG_NS, 'polygon');
-    polygon.setAttribute('points', points);
-    polygon.setAttribute('fill', fill);
-    svg.append(polygon);
+  for (const [d, fill] of MARK_PATHS) {
+    const path = doc.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', fill);
+    path.setAttribute('fill-rule', 'evenodd');
+    svg.append(path);
   }
   button.append(svg);
 }

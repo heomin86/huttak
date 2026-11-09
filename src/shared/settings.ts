@@ -64,6 +64,8 @@ export interface Settings {
   pace: TranslationPace;
   engine: TranslationEngineChoice;
   localServerUrl: string;
+  /** Run the content script on every site so the drag icon shows without a first call. */
+  selectionEverywhere: boolean;
 }
 
 export type SettingsPatch = Partial<
@@ -80,6 +82,7 @@ export type SettingsPatch = Partial<
     | 'pace'
     | 'engine'
     | 'localServerUrl'
+    | 'selectionEverywhere'
   >
 >;
 
@@ -96,6 +99,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   pace: 'quality',
   engine: 'plamo',
   localServerUrl: DEFAULT_LOCAL_SERVER_URL,
+  selectionEverywhere: false,
 });
 
 export function createDefaultSettings(uiLanguage: string): Settings {
@@ -140,6 +144,7 @@ export function normalizeSettings(value: unknown, uiLanguage: string): Settings 
       typeof value.localServerUrl === 'string' && isLoopbackUrl(value.localServerUrl)
         ? value.localServerUrl
         : defaults.localServerUrl,
+    selectionEverywhere: value.selectionEverywhere === true,
   };
 }
 
