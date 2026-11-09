@@ -160,7 +160,10 @@ export function isPageViewState(value: unknown): value is PageViewState {
     isRecord(value) &&
     typeof value.active === 'boolean' &&
     (value.display === 'replace' || value.display === 'bilingual') &&
-    (value.engine === null || value.engine === 'plamo' || value.engine === 'chrome') &&
+    (value.engine === null ||
+      value.engine === 'plamo' ||
+      value.engine === 'chrome' ||
+      value.engine === 'local') &&
     typeof value.pending === 'number' &&
     typeof value.done === 'number' &&
     typeof value.total === 'number' &&

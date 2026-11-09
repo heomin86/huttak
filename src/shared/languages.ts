@@ -56,7 +56,19 @@ export const SUPPORTED_LANGUAGES = [
 
 export type LanguageCode = (typeof SUPPORTED_LANGUAGES)[number];
 
-export const DEFAULT_TARGET_LANGUAGE: LanguageCode = 'en';
+/**
+ * The pair this fork is built around: Korean readers translating English pages, and the
+ * reverse when the page is already Korean.
+ */
+export const HOME_LANGUAGE = 'ko' satisfies LanguageCode;
+export const PARTNER_LANGUAGE = 'en' satisfies LanguageCode;
+
+/** The other half of the main pair. Any language other than Korean pairs with Korean. */
+export function pairPartner(language: string): LanguageCode {
+  return canonicalLanguage(language) === HOME_LANGUAGE ? PARTNER_LANGUAGE : HOME_LANGUAGE;
+}
+
+export const DEFAULT_TARGET_LANGUAGE: LanguageCode = HOME_LANGUAGE;
 
 const SUPPORTED_SET: ReadonlySet<string> = new Set(SUPPORTED_LANGUAGES);
 
@@ -226,7 +238,7 @@ export function chooseTargetLanguage(
   if (explicit) return target;
   const page = pageLanguage ? canonicalLanguage(pageLanguage) : null;
   if (!page || page !== target) return target;
-  return target === 'ja' ? 'en' : 'ja';
+  return pairPartner(target);
 }
 
 /**

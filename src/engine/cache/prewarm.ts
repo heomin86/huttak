@@ -1,4 +1,9 @@
-import { canonicalLanguage, isChromeOnlyLanguage } from '@/shared/languages';
+import {
+  canonicalLanguage,
+  HOME_LANGUAGE,
+  isChromeOnlyLanguage,
+  PARTNER_LANGUAGE,
+} from '@/shared/languages';
 
 /** Short labels that show up on many sites. Cached once so a later visit skips inference. */
 const ENGLISH_UI = [
@@ -20,17 +25,22 @@ const ENGLISH_UI = [
   'Download',
 ] as const;
 
-const JAPANESE_UI = [
-  'ログイン',
-  '設定',
-  '検索',
-  'ホーム',
-  '次へ',
-  '戻る',
-  '閉じる',
-  'キャンセル',
-  '保存',
-  '詳細',
+const KOREAN_UI = [
+  '로그인',
+  '로그아웃',
+  '회원가입',
+  '설정',
+  '검색',
+  '홈',
+  '다음',
+  '이전',
+  '더보기',
+  '자세히 보기',
+  '취소',
+  '닫기',
+  '메뉴',
+  '저장',
+  '다운로드',
 ] as const;
 
 export interface PrewarmRequest {
@@ -42,9 +52,10 @@ export function prewarmRequest(target: string): PrewarmRequest | null {
   const language = canonicalLanguage(target);
   if (!language || isChromeOnlyLanguage(language)) return null;
 
-  const lines = language === 'en' ? JAPANESE_UI : ENGLISH_UI;
+  const fromKorean = language === PARTNER_LANGUAGE;
+  const lines = fromKorean ? KOREAN_UI : ENGLISH_UI;
   return {
-    src: language === 'en' ? 'ja' : 'en',
+    src: fromKorean ? HOME_LANGUAGE : PARTNER_LANGUAGE,
     segments: lines.map((text, index) => ({ id: `ui-${String(index)}`, text })),
   };
 }

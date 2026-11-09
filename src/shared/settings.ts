@@ -7,6 +7,7 @@ import {
   type TargetLanguage,
 } from './languages';
 import { isRecord } from './object';
+import { DEFAULT_LOCAL_SERVER_URL, isLoopbackUrl } from '@/engine/local/server-engine';
 
 export const SETTINGS_SCHEMA_VERSION = 1;
 
@@ -31,6 +32,8 @@ export type DisplayMode = 'replace' | 'bilingual';
 export type TierPreference = 'auto' | 'g' | 'c8' | 'c4';
 export type TranslationPace = 'fast' | 'quality';
 export type IdleMinutes = 0 | 1 | 5 | 15;
+/** `plamo` runs in the browser; `local` asks a llama.cpp server on this computer. */
+export type TranslationEngineChoice = 'plamo' | 'local';
 
 export interface LicenseConsent {
   license: 'plamo-community';
@@ -59,6 +62,8 @@ export interface Settings {
   idleMinutes: IdleMinutes;
   tier: TierPreference;
   pace: TranslationPace;
+  engine: TranslationEngineChoice;
+  localServerUrl: string;
 }
 
 export type SettingsPatch = Partial<
@@ -73,6 +78,8 @@ export type SettingsPatch = Partial<
     | 'idleMinutes'
     | 'tier'
     | 'pace'
+    | 'engine'
+    | 'localServerUrl'
   >
 >;
 
@@ -87,6 +94,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   idleMinutes: 5,
   tier: 'auto',
   pace: 'quality',
+  engine: 'plamo',
+  localServerUrl: DEFAULT_LOCAL_SERVER_URL,
 });
 
 export function createDefaultSettings(uiLanguage: string): Settings {
@@ -126,6 +135,11 @@ export function normalizeSettings(value: unknown, uiLanguage: string): Settings 
     idleMinutes: isIdleMinutes(value.idleMinutes) ? value.idleMinutes : defaults.idleMinutes,
     tier: isTierPreference(value.tier) ? value.tier : defaults.tier,
     pace: isTranslationPace(value.pace) ? value.pace : defaults.pace,
+    engine: value.engine === 'local' ? 'local' : 'plamo',
+    localServerUrl:
+      typeof value.localServerUrl === 'string' && isLoopbackUrl(value.localServerUrl)
+        ? value.localServerUrl
+        : defaults.localServerUrl,
   };
 }
 

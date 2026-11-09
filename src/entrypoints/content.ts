@@ -49,6 +49,7 @@ function overlayLabels(): OverlayLabels {
   return {
     original: t('originalLabel'),
     chromeNote: t('chromeTranslationNote'),
+    localNote: t('localServerNote'),
     machine: t('machineTranslationTooltip'),
     selectionPending: t('selectionPending'),
     selectionFailed: t('selectionFailed'),

@@ -3,7 +3,7 @@ import enMessages from '../../public/_locales/en/messages.json';
 
 export type MessageKey = keyof typeof enMessages;
 
-export type UiLocale = 'ja' | 'en';
+export type UiLocale = 'ko' | 'ja' | 'en';
 
 function formatFallback(message: string, substitutions: string | string[] | undefined): string {
   if (substitutions === undefined) return message;
@@ -26,5 +26,7 @@ export function currentUiLanguage(): string {
 }
 
 export function uiLocale(): UiLocale {
-  return currentUiLanguage().trim().toLowerCase().startsWith('ja') ? 'ja' : 'en';
+  const language = currentUiLanguage().trim().toLowerCase();
+  if (language.startsWith('ko')) return 'ko';
+  return language.startsWith('ja') ? 'ja' : 'en';
 }

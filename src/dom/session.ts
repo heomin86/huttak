@@ -441,6 +441,7 @@ export class PageSession {
     let engine: EngineKind | null = null;
     if (this.active) {
       if (lives.some((item) => item.engine === 'plamo')) engine = 'plamo';
+      else if (lives.some((item) => item.engine === 'local')) engine = 'local';
       else if (lives.some((item) => item.engine === 'chrome')) engine = 'chrome';
     }
     const pageLanguage = this.sourceLanguage();

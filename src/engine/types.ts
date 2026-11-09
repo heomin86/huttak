@@ -1,6 +1,6 @@
 export type Formality = 'polite' | 'plain';
 
-export type EngineKind = 'plamo' | 'chrome';
+export type EngineKind = 'plamo' | 'chrome' | 'local';
 
 export interface GlossaryEntry {
   source: string;
@@ -63,5 +63,5 @@ export function isTranslationChunk(value: unknown): value is TranslationChunk {
   const restart = 'restart' in value ? value.restart : undefined;
   if (restart !== undefined && (typeof restart !== 'boolean' || delta === undefined)) return false;
   const engine = 'engine' in value ? value.engine : undefined;
-  return engine === undefined || engine === 'plamo' || engine === 'chrome';
+  return engine === undefined || engine === 'plamo' || engine === 'chrome' || engine === 'local';
 }

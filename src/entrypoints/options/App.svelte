@@ -19,13 +19,14 @@
   import { PLAMO_OFFICIAL_LINKS, PROJECT_LINKS } from '@/shared/plamo-license';
   import type { IdleMinutes, Settings, SettingsPatch, TierPreference } from '@/shared/settings';
   import { isIdleMinutes, isTierPreference } from '@/shared/settings';
-  import type { TargetLanguage } from '@/shared/languages';
+  import { DEFAULT_TARGET_LANGUAGE, type TargetLanguage } from '@/shared/languages';
   import { loadSettings, saveSettings, subscribeSettings } from '@/shared/storage';
   import EngineStatusView from '@/ui/EngineStatus.svelte';
   import LanguageField from '@/ui/LanguageField.svelte';
   import GlossaryEditor from '@/ui/GlossaryEditor.svelte';
   import ModelManager from '@/ui/ModelManager.svelte';
   import { runtimeLabel } from '@/ui/runtime-label';
+  import LocalEngineField from '@/ui/LocalEngineField.svelte';
   import SettingsFields from '@/ui/SettingsFields.svelte';
 
   type SettingsError = 'load' | 'save' | null;
@@ -71,7 +72,7 @@
     const label = runtimeLabel({
       status: engine,
       pageSimple: false,
-      targetLanguage: settings?.targetLanguage ?? 'en',
+      targetLanguage: settings?.targetLanguage ?? DEFAULT_TARGET_LANGUAGE,
     });
     return t(label.key, label.substitutions);
   });
@@ -221,6 +222,7 @@
     <h2>{t('settingsLabel')}</h2>
     {#if settings}
       <SettingsFields {settings} {uiLanguage} onChange={updateSettings} />
+      <LocalEngineField {settings} onChange={updateSettings} />
       <p class="muted help">{t('optionsDefaultHint')}</p>
       {#if settingsError === 'save'}
         <p class="error" role="alert">{t('errorSaveSettings')}</p>
@@ -245,7 +247,7 @@
             <span class="site-host">{rule.host}</span>
             <div class="site-controls">
               <LanguageField
-                value={rule.targetLanguage ?? settings?.targetLanguage ?? 'en'}
+                value={rule.targetLanguage ?? settings?.targetLanguage ?? DEFAULT_TARGET_LANGUAGE}
                 {uiLanguage}
                 onChange={(language: TargetLanguage) => {
                   void patchSite(rule.host, { targetLanguage: language });

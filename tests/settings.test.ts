@@ -25,6 +25,8 @@ function stored(overrides: Partial<Settings> = {}): Settings {
     idleMinutes: 5,
     tier: 'auto',
     pace: 'quality',
+    engine: 'plamo',
+    localServerUrl: 'http://127.0.0.1:8080',
     ...overrides,
   };
 }
@@ -32,14 +34,14 @@ function stored(overrides: Partial<Settings> = {}): Settings {
 describe('settings defaults', () => {
   it('uses the UI language with polite form and replacement display', () => {
     expect(createDefaultSettings('fr-FR')).toEqual(stored({ targetLanguage: 'fr' }));
-    expect(DEFAULT_SETTINGS.targetLanguage).toBe('en');
+    expect(DEFAULT_SETTINGS.targetLanguage).toBe('ko');
   });
 
-  it('falls back to English when the UI language is not supported', () => {
-    expect(createDefaultSettings('cs-CZ').targetLanguage).toBe('en');
-    expect(createDefaultSettings('pt-BR').targetLanguage).toBe('en');
-    expect(createDefaultSettings('').targetLanguage).toBe('en');
-    expect(resolveTargetLanguage('not-a-language')).toBe('en');
+  it('falls back to Korean when the UI language is not supported', () => {
+    expect(createDefaultSettings('cs-CZ').targetLanguage).toBe('ko');
+    expect(createDefaultSettings('pt-BR').targetLanguage).toBe('ko');
+    expect(createDefaultSettings('').targetLanguage).toBe('ko');
+    expect(resolveTargetLanguage('not-a-language')).toBe('ko');
   });
 
   it('maps Chinese UI languages to the supported scripts', () => {

@@ -1,10 +1,10 @@
 {
   "extensionName": {
-    "message": "Sakutto - Local AI translation",
+    "message": "Huttak - Local AI translation",
     "description": "Extension name."
   },
   "extensionShortName": {
-    "message": "Sakutto",
+    "message": "Huttak",
     "description": "Short extension name."
   },
   "extensionDescription": {
@@ -145,7 +145,7 @@
     "message": "Open settings"
   },
   "unofficialNotice": {
-    "message": "Unofficial. Not affiliated with Preferred Networks. Built with PLaMo."
+    "message": "Unofficial. Not affiliated with Preferred Networks or jammaru. Built with PLaMo."
   },
   "optionsTitle": {
     "message": "Settings"
@@ -787,5 +787,49 @@
         "content": "$1"
       }
     }
+  },
+  "localServerNote": {
+    "message": "Machine translation by a model on this computer.",
+    "description": "Local llama.cpp server engine."
+  },
+  "engineChoiceLabel": {
+    "message": "Translation engine",
+    "description": "Local llama.cpp server engine."
+  },
+  "engineChoicePlamo": {
+    "message": "PLaMo in the browser",
+    "description": "Local llama.cpp server engine."
+  },
+  "engineChoiceLocal": {
+    "message": "Local server on this computer (llama.cpp)",
+    "description": "Local llama.cpp server engine."
+  },
+  "localServerUrlLabel": {
+    "message": "Local server address",
+    "description": "Local llama.cpp server engine."
+  },
+  "localServerHelp": {
+    "message": "Start the server first, for example: llama-server -m translategemma-12b-it.Q4_K_M.gguf --port 8080. Only addresses on this computer (127.0.0.1, localhost) are allowed, so page text stays on this device.",
+    "description": "Local llama.cpp server engine."
+  },
+  "localServerUrlInvalid": {
+    "message": "Enter an address on this computer, such as http://127.0.0.1:8080.",
+    "description": "Local llama.cpp server engine."
+  },
+  "localServerCheck": {
+    "message": "Test the connection",
+    "description": "Local llama.cpp server engine."
+  },
+  "localServerOk": {
+    "message": "Connected to the local server.",
+    "description": "Local llama.cpp server engine."
+  },
+  "localServerFailed": {
+    "message": "Could not reach the local server. Check that it is running and that access was allowed.",
+    "description": "Local llama.cpp server engine."
+  },
+  "runtimeLocal": {
+    "message": "Local server",
+    "description": "Local llama.cpp server engine."
   }
 }

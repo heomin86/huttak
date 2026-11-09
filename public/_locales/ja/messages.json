@@ -1,10 +1,10 @@
 {
   "extensionName": {
-    "message": "Sakutto - ローカルAI翻訳",
+    "message": "Huttak - ローカルAI翻訳",
     "description": "拡張機能の名前。"
   },
   "extensionShortName": {
-    "message": "Sakutto",
+    "message": "Huttak",
     "description": "短い名前。"
   },
   "extensionDescription": {
@@ -145,7 +145,7 @@
     "message": "設定を開く"
   },
   "unofficialNotice": {
-    "message": "非公式。Preferred Networks とは無関係です。Built with PLaMo。"
+    "message": "非公式。Preferred Networks および jammaru とは無関係です。Built with PLaMo。"
   },
   "optionsTitle": {
     "message": "設定"
@@ -787,5 +787,49 @@
         "content": "$1"
       }
     }
+  },
+  "localServerNote": {
+    "message": "このコンピューターのモデルによる機械翻訳です。",
+    "description": "Local llama.cpp server engine."
+  },
+  "engineChoiceLabel": {
+    "message": "翻訳エンジン",
+    "description": "Local llama.cpp server engine."
+  },
+  "engineChoicePlamo": {
+    "message": "ブラウザー内の PLaMo",
+    "description": "Local llama.cpp server engine."
+  },
+  "engineChoiceLocal": {
+    "message": "このコンピューターのローカルサーバー（llama.cpp）",
+    "description": "Local llama.cpp server engine."
+  },
+  "localServerUrlLabel": {
+    "message": "ローカルサーバーのアドレス",
+    "description": "Local llama.cpp server engine."
+  },
+  "localServerHelp": {
+    "message": "先にサーバーを起動してください。例: llama-server -m translategemma-12b-it.Q4_K_M.gguf --port 8080。このコンピューターのアドレス（127.0.0.1、localhost）だけを使えるので、ページの文章はこの端末から出ません。",
+    "description": "Local llama.cpp server engine."
+  },
+  "localServerUrlInvalid": {
+    "message": "http://127.0.0.1:8080 のような、このコンピューターのアドレスを入力してください。",
+    "description": "Local llama.cpp server engine."
+  },
+  "localServerCheck": {
+    "message": "接続を確認",
+    "description": "Local llama.cpp server engine."
+  },
+  "localServerOk": {
+    "message": "ローカルサーバーに接続できました。",
+    "description": "Local llama.cpp server engine."
+  },
+  "localServerFailed": {
+    "message": "ローカルサーバーに接続できませんでした。起動しているか、アクセスを許可したか確認してください。",
+    "description": "Local llama.cpp server engine."
+  },
+  "runtimeLocal": {
+    "message": "ローカルサーバー",
+    "description": "Local llama.cpp server engine."
   }
 }
