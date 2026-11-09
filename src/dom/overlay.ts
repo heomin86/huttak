@@ -3,6 +3,8 @@ import type { EngineKind } from '@/engine/types';
 export interface OverlayLabels {
   original: string;
   chromeNote: string;
+  /** Footnote for a line written by the llama.cpp server on this computer. */
+  localNote?: string | undefined;
   machine: string;
   selectionPending: string;
   selectionFailed: string;
@@ -493,9 +495,15 @@ export class PageOverlay {
     point?: { x: number; y: number },
   ): void {
     this.tipBody.textContent = original;
-    this.tipNote.textContent = engine === 'chrome' ? this.labels.chromeNote : this.labels.machine;
+    this.tipNote.textContent = this.noteFor(engine);
     const rect = point ? new DOMRect(point.x, point.y, 0, 0) : anchor.getBoundingClientRect();
     this.place(this.tipHost, rect, false);
+  }
+
+  private noteFor(engine: EngineKind | null): string {
+    if (engine === 'chrome') return this.labels.chromeNote;
+    if (engine === 'local') return this.labels.localNote ?? this.labels.machine;
+    return this.labels.machine;
   }
 
   showStatus(text: string): void {
@@ -523,11 +531,7 @@ export class PageOverlay {
     const opening = this.popHost.hidden;
     this.popBody.textContent = pending ? this.labels.selectionPending : text;
     this.popBody.lang = lang ?? '';
-    this.popNote.textContent = pending
-      ? ''
-      : engine === 'chrome'
-        ? this.labels.chromeNote
-        : this.labels.machine;
+    this.popNote.textContent = pending ? '' : this.noteFor(engine);
     this.place(this.popHost, anchor, true);
     if (!opening) return;
     const active = this.doc.activeElement;

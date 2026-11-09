@@ -1,7 +1,7 @@
 import { browser, type Browser } from 'wxt/browser';
 import { hasLicenseConsent } from '@/shared/agreement';
 import { probeCapabilities } from '@/shared/capabilities';
-import { canonicalLanguage } from '@/shared/languages';
+import { canonicalLanguage, HOME_LANGUAGE, pairPartner } from '@/shared/languages';
 import type { EngineStatus, ModelStatus } from '@/shared/engine-status';
 import { advanceModelStatus } from '@/shared/model-progress';
 import { loadSettings } from '@/shared/storage';
@@ -10,6 +10,8 @@ import { MemoryTranslationCacheStore, IndexedDbTranslationCacheStore } from '../
 import { CachingEngine } from '../cache/caching-engine';
 import { TranslationCache } from '../cache/cache';
 import { prewarmRequest } from '../cache/prewarm';
+import { DEFAULT_LOCAL_SERVER_URL, LocalServerEngine } from '../local/server-engine';
+import { SwitchingEngine } from '../local/switching-engine';
 import { ChromeTranslatorEngine } from '../chrome/translator';
 import { isAbortError } from '../errors';
 import { selectionForTier, cpuFallback, type BackendSelection } from '../in-browser/backend';
@@ -84,11 +86,11 @@ async function warmup(runtime: LlamaRuntime, tgt: string): Promise<void> {
   const timer = setTimeout(() => controller.abort(), WARMUP_TIMEOUT_MS);
 
   try {
-    const language = canonicalLanguage(tgt) ?? 'ja';
+    const language = canonicalLanguage(tgt) ?? HOME_LANGUAGE;
     await runtime.complete({
       prompt: buildTranslationPrompt({
         text: 'Hello.',
-        src: language === 'ja' ? 'en' : 'ja',
+        src: pairPartner(language),
         tgt: language,
         ...(language === 'ja' ? { form: 'polite' } : {}),
       }),
@@ -128,6 +130,7 @@ export class EngineHost {
   private readonly downloads = new Map<ModelId, ActiveDownload>();
   private activeModelId: ModelId = DEFAULT_MODEL_ID;
   private plamoReady = false;
+  private localServerUrl = DEFAULT_LOCAL_SERVER_URL;
   private warming = false;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private idleGeneration = 0;
@@ -209,8 +212,23 @@ export class EngineHost {
 
     const chromeForCache = chrome.available ? new CachingEngine(chrome, cache, 'chrome') : null;
 
+    const localServer = new LocalServerEngine({
+      baseUrl: () => this.localServerUrl,
+    });
+    const translator = new SwitchingEngine(
+      {
+        plamo: new CachingEngine(lazy, cache, () => this.activeModelId),
+        local: new CachingEngine(localServer, cache, () => `local:${this.localServerUrl}`),
+      },
+      async () => {
+        const current = browser.storage?.local ? await loadSettings() : null;
+        this.localServerUrl = current?.localServerUrl ?? DEFAULT_LOCAL_SERVER_URL;
+        return current?.engine ?? 'plamo';
+      },
+    );
+
     const router = new RoutingEngine({
-      plamo: new CachingEngine(lazy, cache, () => this.activeModelId),
+      plamo: translator,
       chrome: chromeForCache,
       plamoSupports: (src, tgt) =>
         canonicalLanguage(tgt) !== null &&
@@ -636,7 +654,8 @@ export class EngineHost {
 
       const started = performance.now();
       await loaded.runtime.complete({
-        prompt: buildTranslationPrompt({ text: QUALITY_PARAGRAPH, tgt: 'ja', form: 'polite' }),
+        // Timed on Korean output, the language this fork's readers actually get.
+        prompt: buildTranslationPrompt({ text: QUALITY_PARAGRAPH, tgt: HOME_LANGUAGE }),
         maxTokens: 512,
         signal: controller.signal,
         onToken: () => undefined,

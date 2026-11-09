@@ -43,18 +43,23 @@ function placeholderNames(entry: MessageEntry | undefined): string[] {
 describe('locale messages', () => {
   const en = readMessages('en');
   const ja = readMessages('ja');
+  const ko = readMessages('ko');
 
-  it('defines the same non-empty keys in English and Japanese', () => {
+  it('defines the same non-empty keys in English, Japanese and Korean', () => {
     expect(Object.keys(ja).sort()).toEqual(Object.keys(en).sort());
+    expect(Object.keys(ko).sort()).toEqual(Object.keys(en).sort());
 
-    for (const [key, entry] of Object.entries({ ...en, ...ja })) {
-      expect(entry.message.trim(), key).not.toBe('');
+    for (const messages of [en, ja, ko]) {
+      for (const [key, entry] of Object.entries(messages)) {
+        expect(entry.message.trim(), key).not.toBe('');
+      }
     }
   });
 
-  it('uses matching placeholders in both locales', () => {
+  it('uses matching placeholders in every locale', () => {
     for (const key of Object.keys(en)) {
       expect(placeholderNames(ja[key]), key).toEqual(placeholderNames(en[key]));
+      expect(placeholderNames(ko[key]), key).toEqual(placeholderNames(en[key]));
     }
   });
 
@@ -70,6 +75,7 @@ describe('locale messages', () => {
     for (const [locale, messages] of [
       ['en', en],
       ['ja', ja],
+      ['ko', ko],
     ] as const) {
       for (const [key, entry] of Object.entries(messages)) {
         const used = [...entry.message.matchAll(/\$([A-Za-z0-9_]+)\$/g)].map((match) =>
@@ -90,18 +96,25 @@ describe('locale messages', () => {
     for (const key of usedMessageKeys()) {
       expect(en, key).toHaveProperty(key);
       expect(ja, key).toHaveProperty(key);
+      expect(ko, key).toHaveProperty(key);
     }
   });
 
   it('uses the product names from the specification', () => {
-    expect(en.extensionName?.message).toBe('Sakutto - Local AI translation');
-    expect(ja.extensionName?.message).toBe('Sakutto - ローカルAI翻訳');
-    expect(en.extensionShortName?.message).toBe('Sakutto');
-    expect(ja.extensionShortName?.message).toBe('Sakutto');
+    expect(ko.extensionName?.message).toBe('Huttak - 로컬 AI 번역');
+    expect(en.extensionName?.message).toBe('Huttak - Local AI translation');
+    expect(ja.extensionName?.message).toBe('Huttak - ローカルAI翻訳');
+    for (const messages of [en, ja, ko]) {
+      expect(messages.extensionShortName?.message).toBe('Huttak');
+      // The model license asks forks to say they are unaffiliated and built with PLaMo.
+      expect(messages.unofficialNotice?.message).toContain('Preferred Networks');
+      expect(messages.unofficialNotice?.message).toContain('jammaru');
+      expect(messages.unofficialNotice?.message).toContain('Built with PLaMo');
+    }
   });
 
   it('keeps the store name and description inside the manifest limits', () => {
-    for (const messages of [en, ja]) {
+    for (const messages of [en, ja, ko]) {
       expect(messages.extensionName?.message.length).toBeLessThanOrEqual(75);
       expect(messages.extensionShortName?.message.length).toBeLessThanOrEqual(12);
       expect(messages.extensionDescription?.message.length).toBeLessThanOrEqual(132);
@@ -149,6 +162,12 @@ describe('locale messages', () => {
     expect(en).not.toHaveProperty('consentCheckbox');
     expect(ja).not.toHaveProperty('consentCheckbox');
 
+    expect(ko.onboardingStart?.message).toBe('라이선스에 동의하고 시작');
+    expect(ko.onboardingStartNotice?.message).toContain('라이선스에 동의하고 시작');
+    expect(ko.onboardingConsentSentence?.message).toContain('라이선스에 동의하고 시작');
+    expect(ko.onboardingModelNote?.message).toContain(
+      formatByteSize(getModel(DEFAULT_MODEL_ID).size),
+    );
     expect(en.onboardingStart?.message).toBe('Agree to the license and start');
     expect(ja.onboardingStart?.message).toBe('ライセンスに同意して開始');
 

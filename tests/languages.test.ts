@@ -4,6 +4,8 @@ import {
   CHROME_SUPPORTED_LANGUAGES,
   canonicalLanguage,
   chooseTargetLanguage,
+  DEFAULT_TARGET_LANGUAGE,
+  pairPartner,
   resolvePageTarget,
   fromChromeLanguage,
   isChromeLanguage,
@@ -72,22 +74,32 @@ describe('Chrome translator languages', () => {
 });
 
 describe('default target language', () => {
-  it('picks another language when the page already matches the preference', () => {
-    expect(chooseTargetLanguage('en', 'en', false)).toBe('ja');
-    expect(chooseTargetLanguage('en-US', 'en', false)).toBe('ja');
-    expect(chooseTargetLanguage('ja', 'ja', false)).toBe('en');
-    expect(chooseTargetLanguage('ja', 'en', false)).toBe('en');
-    expect(chooseTargetLanguage('en', 'de', false)).toBe('de');
-    expect(chooseTargetLanguage('en', 'en', true)).toBe('en');
-    expect(chooseTargetLanguage(null, 'en', false)).toBe('en');
+  it('uses Korean when the UI language is not a model language', () => {
+    expect(DEFAULT_TARGET_LANGUAGE).toBe('ko');
+    expect(pairPartner('ko')).toBe('en');
+    expect(pairPartner('ko-KR')).toBe('en');
+    expect(pairPartner('en')).toBe('ko');
+    expect(pairPartner('ja')).toBe('ko');
   });
 
-  it('shows Japanese for an English page unless the site chose a language', () => {
-    expect(resolvePageTarget('en', 'en', false)).toBe('ja');
-    expect(resolvePageTarget('en', 'ja', false)).toBe('ja');
-    expect(resolvePageTarget('ja', 'ja', false)).toBe('en');
-    expect(resolvePageTarget(null, 'en', false)).toBe('en');
+  it('picks another language when the page already matches the preference', () => {
+    expect(chooseTargetLanguage('ko', 'ko', false)).toBe('en');
+    expect(chooseTargetLanguage('ko-KR', 'ko', false)).toBe('en');
+    expect(chooseTargetLanguage('en', 'en', false)).toBe('ko');
+    expect(chooseTargetLanguage('en-US', 'en', false)).toBe('ko');
+    expect(chooseTargetLanguage('ja', 'ja', false)).toBe('ko');
+    expect(chooseTargetLanguage('en', 'ko', false)).toBe('ko');
+    expect(chooseTargetLanguage('en', 'de', false)).toBe('de');
+    expect(chooseTargetLanguage('ko', 'ko', true)).toBe('ko');
+    expect(chooseTargetLanguage(null, 'ko', false)).toBe('ko');
+  });
+
+  it('shows English for a Korean page unless the site chose a language', () => {
+    expect(resolvePageTarget('ko', 'ko', false)).toBe('en');
+    expect(resolvePageTarget('en', 'ko', false)).toBe('ko');
+    expect(resolvePageTarget('en', 'en', false)).toBe('ko');
+    expect(resolvePageTarget(null, 'ko', false)).toBe('ko');
     expect(resolvePageTarget('en', 'pt', true)).toBe('pt');
-    expect(resolvePageTarget('en', 'en', true)).toBe('en');
+    expect(resolvePageTarget('ko', 'ko', true)).toBe('ko');
   });
 });

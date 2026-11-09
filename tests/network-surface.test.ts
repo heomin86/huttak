@@ -144,7 +144,26 @@ describe('network surface', () => {
         NETWORK_SINKS.some((pattern) => pattern.test(file.code)),
     );
 
-    expect(reaching.map((file) => file.path)).toEqual(['src/engine/model/download.ts']);
+    // The model download, plus the opt-in llama.cpp engine and its connection check, which
+    // may only reach a server on this computer (see the next test).
+    expect(reaching.map((file) => file.path).sort()).toEqual(
+      [
+        'src/engine/local/server-engine.ts',
+        'src/engine/model/download.ts',
+        'src/ui/LocalEngineField.svelte',
+      ].sort(),
+    );
+  });
+
+  it('lets the local engine reach only a server on this computer', () => {
+    for (const path of ['src/engine/local/server-engine.ts', 'src/ui/LocalEngineField.svelte']) {
+      const file = files.find((entry) => entry.path === path);
+      if (!file) throw new Error(`${path} was not found`);
+      const guard = file.code.search(/isLoopbackUrl\(/u);
+      const sink = file.code.search(/\b(?:fetchImpl|fetch)\(`/u);
+      expect(guard, path).toBeGreaterThan(-1);
+      expect(sink, path).toBeGreaterThan(guard);
+    }
   });
 
   it('sends no body and no credentials with the model request', () => {

@@ -5,7 +5,7 @@
   import type { ModelStatus } from '@/shared/engine-status';
   import { agreementFromStorage } from '@/shared/agreement';
   import { currentUiLanguage, t } from '@/shared/i18n';
-  import { resolveTargetLanguage, type TargetLanguage } from '@/shared/languages';
+  import { pairPartner, resolveTargetLanguage, type TargetLanguage } from '@/shared/languages';
   import {
     isModelProgressMessage,
     requestModelCancel,
@@ -140,7 +140,7 @@
     startRequested = true;
     if (!alreadyReady) phase = 'downloading';
 
-    const source = targetLanguage === 'en' ? 'ja' : 'en';
+    const source = pairPartner(targetLanguage);
     const pack = prepareTranslatorPack(source, targetLanguage);
 
     try {

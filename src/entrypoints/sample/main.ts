@@ -3,7 +3,7 @@ import { fakeTranslate } from '@/dom/fake-engine';
 import type { OverlayLabels } from '@/dom/overlay';
 import { PageSession, preferencesFor } from '@/dom/session';
 import { t } from '@/shared/i18n';
-import { isTargetLanguage } from '@/shared/languages';
+import { isTargetLanguage, pairPartner } from '@/shared/languages';
 import { isModelProgressMessage, requestEngineStatus } from '@/shared/messages';
 import { loadSettings } from '@/shared/storage';
 import { translateViaBackground } from '@/shared/translation-client';
@@ -12,6 +12,7 @@ function overlayLabels(): OverlayLabels {
   return {
     original: t('originalLabel'),
     chromeNote: t('chromeTranslationNote'),
+    localNote: t('localServerNote'),
     machine: t('machineTranslationTooltip'),
     selectionPending: t('selectionPending'),
     selectionFailed: t('selectionFailed'),
@@ -32,7 +33,7 @@ function overlayLabels(): OverlayLabels {
 }
 
 function showSample(targetLanguage: string): void {
-  const language = targetLanguage === 'en' ? 'ja' : 'en';
+  const language = pairPartner(targetLanguage);
   document.documentElement.lang = language;
   for (const article of document.querySelectorAll('article[data-sample]')) {
     if (article.getAttribute('data-sample') === language) article.removeAttribute('hidden');

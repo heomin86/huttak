@@ -7,6 +7,7 @@
   import { currentUiLanguage, t } from '@/shared/i18n';
   import {
     CHROME_ONLY_LANGUAGES,
+    DEFAULT_TARGET_LANGUAGE,
     displayLanguage,
     isChromeOnlyLanguage,
     type TargetLanguage,
@@ -45,16 +46,21 @@
   let downloadFailed = $state(false);
   let abortController = $state<AbortController | null>(null);
 
-  let targetLanguage = $derived<TargetLanguage>(settings?.targetLanguage ?? 'ja');
+  let targetLanguage = $derived<TargetLanguage>(
+    settings?.targetLanguage ?? DEFAULT_TARGET_LANGUAGE,
+  );
   let plan = $derived(planTypedTranslation(targetLanguage));
   let trimmed = $derived(normalizeTypedInput(sourceText));
   let tooLong = $derived(trimmed.length > MAX_TYPED_CHARS);
+  // A llama.cpp server on this computer needs no PLaMo license or download.
   let readiness = $derived<TypedReadiness>(
-    typedReadiness({
-      consent: hasLicenseConsent(settings),
-      modelState: engineStatus?.model.state ?? 'absent',
-      plamoReady: engineStatus?.plamoReady ?? false,
-    }),
+    settings?.engine === 'local'
+      ? 'ready'
+      : typedReadiness({
+          consent: hasLicenseConsent(settings),
+          modelState: engineStatus?.model.state ?? 'absent',
+          plamoReady: engineStatus?.plamoReady ?? false,
+        }),
   );
   let chromeOnlyTarget = $derived(isChromeOnlyLanguage(targetLanguage));
   let canTranslate = $derived(

@@ -28,7 +28,12 @@
     subscribeSiteRules,
     type SiteRule,
   } from '@/dom/sites';
-  import { isChromeOnlyLanguage, resolvePageTarget, type TargetLanguage } from '@/shared/languages';
+  import {
+    DEFAULT_TARGET_LANGUAGE,
+    isChromeOnlyLanguage,
+    resolvePageTarget,
+    type TargetLanguage,
+  } from '@/shared/languages';
   import { advanceModelStatus } from '@/shared/model-progress';
   import { readDeviceHeadroom, type DeviceHeadroom } from '@/ui/device-headroom';
   import LanguageField from '@/ui/LanguageField.svelte';
@@ -53,7 +58,9 @@
   let quality = $state<QualitySample | null>(null);
   let headroom = $state<DeviceHeadroom | null>(null);
 
-  let storedTarget = $derived(rule?.targetLanguage ?? settings?.targetLanguage ?? 'en');
+  let storedTarget = $derived(
+    rule?.targetLanguage ?? settings?.targetLanguage ?? DEFAULT_TARGET_LANGUAGE,
+  );
   let targetLanguage = $derived(
     resolvePageTarget(view?.pageLanguage ?? null, storedTarget, rule?.targetLanguage !== undefined),
   );
@@ -69,10 +76,12 @@
    */
   let canStart = $derived(
     translated ||
+      settings?.engine === 'local' ||
       isChromeOnlyLanguage(targetLanguage) ||
       !modelStartBlocked(engine?.model ?? modelMark),
   );
   let engineText = $derived.by(() => {
+    if (settings?.engine === 'local') return t('runtimeLocal');
     const label = runtimeLabel({
       status: engine,
       pageSimple: view?.active === true && view.engine === 'chrome',

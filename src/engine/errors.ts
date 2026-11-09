@@ -10,6 +10,7 @@ export type EngineErrorCode =
   | 'chrome-unavailable'
   | 'chrome-not-ready'
   | 'offscreen-unavailable'
+  | 'local-server-unavailable'
   | 'aborted'
   | 'unknown';
 
@@ -38,6 +39,7 @@ const ENGINE_ERROR_CODES: ReadonlySet<string> = new Set<EngineErrorCode>([
   'model-missing',
   'model-integrity',
   'model-load-failed',
+  'local-server-unavailable',
   'gpu-unavailable',
   'download-failed',
   'storage-insufficient',
