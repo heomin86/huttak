@@ -14,80 +14,60 @@ const SAMPLES_PER_AXIS = 6;
 const COLORS = {
   background: [16, 24, 40],
   primary: [248, 250, 252],
-  accent: [125, 211, 252],
+  accent: [251, 146, 60],
 };
 
 const BACKGROUND = { x: 0, y: 0, width: 128, height: 128, radius: 26 };
-// The mark is one folded strip. Cyan leaves to the right, white returns to the left,
-// and the color changes across the fold. The icon draws it slightly smaller so the
-// points stay inside the rounded plate.
-const MARK_SCALE = 0.84;
-const CYAN = '#7dd3fc';
+// The mark is the Hangul letter ㅎ (the first sound of 후딱, "in a flash"), leaning
+// forward, with three orange speed lines behind it. The short top stroke is orange too, so
+// the letter keeps one accent at each end. The icon draws it slightly smaller so the tips
+// stay inside the rounded plate.
+const MARK_SCALE = 0.86;
+const ACCENT = '#fb923c';
 const WHITE = '#f8fafc';
-const CYAN_PARTS = [
-  [
-    [92, 28],
-    [36, 28],
-    [36, 44],
-    [92, 44],
-  ],
-  [
-    [92, 44],
-    [112, 36],
-    [92, 28],
-  ],
-  [
-    [30.34, 41.66],
-    [58.34, 69.66],
-    [69.66, 58.34],
-    [41.66, 30.34],
-  ],
-  [
-    [36, 36],
-    [36, 28],
-    [30.34, 41.66],
-  ],
-  [
-    [36, 36],
-    [36, 44],
-    [41.66, 30.34],
-  ],
+const LEAN = 0.16;
+
+function lean(polygon) {
+  return polygon.map(([x, y]) => [x + (64 - y) * LEAN, y]);
+}
+
+function rect(x1, y1, x2, y2) {
+  return [
+    [x1, y1],
+    [x2, y1],
+    [x2, y2],
+    [x1, y2],
+  ];
+}
+
+function circle(cx, cy, r, steps = 64) {
+  return Array.from({ length: steps }, (_, index) => {
+    const angle = (index / steps) * Math.PI * 2;
+    return [cx + Math.cos(angle) * r, cy + Math.sin(angle) * r];
+  });
+}
+
+// A part is an outer outline with optional holes (the ring of ㅇ).
+const ACCENT_PARTS = [
+  { outer: lean(rect(52, 20, 80, 30)) },
+  { outer: lean(rect(8, 70, 30, 76)) },
+  { outer: lean(rect(2, 82, 30, 88)) },
+  { outer: lean(rect(12, 94, 30, 100)) },
 ];
 const WHITE_PARTS = [
-  [
-    [58.34, 69.66],
-    [86.34, 97.66],
-    [97.66, 86.34],
-    [69.66, 58.34],
-  ],
-  [
-    [92, 84],
-    [36, 84],
-    [36, 100],
-    [92, 100],
-  ],
-  [
-    [36, 84],
-    [16, 92],
-    [36, 100],
-  ],
-  [
-    [92, 92],
-    [86.34, 97.66],
-    [92, 84],
-  ],
-  [
-    [92, 92],
-    [97.66, 86.34],
-    [92, 100],
-  ],
+  { outer: lean(rect(30, 37, 102, 48)) },
+  { outer: lean(circle(68, 83, 27)), holes: [lean(circle(68, 83, 14))] },
 ];
 
-function fit(polygon) {
+function fitPolygon(polygon) {
   return polygon.map(([x, y]) => [64 + (x - 64) * MARK_SCALE, 64 + (y - 64) * MARK_SCALE]);
 }
 
-const ICON_CYAN = CYAN_PARTS.map(fit);
+function fit(part) {
+  return { outer: fitPolygon(part.outer), holes: (part.holes ?? []).map(fitPolygon) };
+}
+
+const ICON_ACCENT = ACCENT_PARTS.map(fit);
 const ICON_WHITE = WHITE_PARTS.map(fit);
 
 function isInsideRoundedRect(x, y, rect) {
@@ -121,12 +101,16 @@ function isInsidePolygon(x, y, polygon) {
 }
 
 function covers(x, y, parts) {
-  return parts.some((polygon) => isInsidePolygon(x, y, polygon));
+  return parts.some(
+    (part) =>
+      isInsidePolygon(x, y, part.outer) &&
+      !(part.holes ?? []).some((hole) => isInsidePolygon(x, y, hole)),
+  );
 }
 
 function colorAt(x, y) {
   if (covers(x, y, ICON_WHITE)) return COLORS.primary;
-  if (covers(x, y, ICON_CYAN)) return COLORS.accent;
+  if (covers(x, y, ICON_ACCENT)) return COLORS.accent;
   if (isInsideRoundedRect(x, y, BACKGROUND)) return COLORS.background;
   return null;
 }
@@ -228,26 +212,32 @@ function encodePng(size, rgba) {
   ]);
 }
 
-function polygonTag(polygon, fill) {
-  const points = polygon
-    .map(([x, y]) => `${Number(x.toFixed(2))},${Number(y.toFixed(2))}`)
-    .join(' ');
-  return `<polygon points="${points}" fill="${fill}"/>`;
+function ring(polygon) {
+  const [first, ...rest] = polygon.map(
+    ([x, y]) => `${Number(x.toFixed(2))},${Number(y.toFixed(2))}`,
+  );
+  return `M${first}L${rest.join('L')}Z`;
+}
+
+function partTag(part, fill) {
+  // evenodd keeps the hole of ㅇ transparent in the plain logo.
+  const d = [part.outer, ...(part.holes ?? [])].map(ring).join('');
+  return `<path d="${d}" fill="${fill}" fill-rule="evenodd"/>`;
 }
 
 function renderLogoSvg() {
-  const cyan = CYAN_PARTS.map((polygon) => polygonTag(polygon, CYAN)).join('');
-  const white = WHITE_PARTS.map((polygon) => polygonTag(polygon, WHITE)).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Sakutto">${cyan}${white}</svg>\n`;
+  const accent = ACCENT_PARTS.map((part) => partTag(part, ACCENT)).join('');
+  const white = WHITE_PARTS.map((part) => partTag(part, WHITE)).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Huttak">${accent}${white}</svg>\n`;
 }
 
 function renderSvg() {
-  const cyan = ICON_CYAN.map((polygon) => polygonTag(polygon, CYAN)).join('\n  ');
-  const white = ICON_WHITE.map((polygon) => polygonTag(polygon, WHITE)).join('\n  ');
+  const accent = ICON_ACCENT.map((part) => partTag(part, ACCENT)).join('\n  ');
+  const white = ICON_WHITE.map((part) => partTag(part, WHITE)).join('\n  ');
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
-  <title id="title">Sakutto</title>
+  <title id="title">Huttak</title>
   <rect width="128" height="128" rx="${BACKGROUND.radius}" fill="#101828"/>
-  ${cyan}
+  ${accent}
   ${white}
 </svg>
 `;
