@@ -111,7 +111,19 @@ const OWN_UI_TAGS: ReadonlySet<string> = new Set([
   'SAKUTTO-PERF',
   'SAKUTTO-STATUS',
   'SAKUTTO-BAR',
+  'SAKUTTO-CAPTION',
 ]);
+
+/**
+ * The player's own caption line. It is replaced on every time update, so writing
+ * a translation into it is gone on the next tick. Video captions are drawn in an
+ * overlay instead, and this window stays out of the page walk.
+ */
+const PLAYER_CAPTION_SELECTOR = [
+  '.ytp-caption-window-container',
+  '.ytp-caption-window',
+  '.ytp-caption-segment',
+].join(', ');
 
 const FROZEN_SELECTOR = [
   'sup',
@@ -211,7 +223,11 @@ export function isBlockElement(element: Element): boolean {
 }
 
 export function isTranslationExcluded(element: Element): boolean {
-  return isOwnUi(element) || element.closest(EXCLUDED_SELECTOR) !== null;
+  return (
+    isOwnUi(element) ||
+    element.closest(EXCLUDED_SELECTOR) !== null ||
+    element.closest(PLAYER_CAPTION_SELECTOR) !== null
+  );
 }
 
 /**

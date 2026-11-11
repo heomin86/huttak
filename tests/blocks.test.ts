@@ -24,6 +24,20 @@ describe('translatable blocks', () => {
     expect(isTranslationExcluded(document.querySelector('p')!)).toBe(false);
   });
 
+  it('leaves player caption windows and the caption overlay out of the page walk', () => {
+    document.body.innerHTML = `
+      <p>Article text</p>
+      <div class="ytp-caption-window-container">
+        <span class="ytp-caption-segment">Hello there</span>
+      </div>
+      <sakutto-caption>번역된 자막</sakutto-caption>
+    `;
+
+    expect(countTranslatableBlocks(document)).toBe(1);
+    expect(isTranslationExcluded(document.querySelector('.ytp-caption-segment')!)).toBe(true);
+    expect(isTranslationExcluded(document.querySelector('sakutto-caption')!)).toBe(true);
+  });
+
   it('counts body text inside wrapper elements without double counting', () => {
     document.body.innerHTML = `
       <article>Release notes for <em>today</em>.</article>

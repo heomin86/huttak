@@ -7,6 +7,8 @@ import { installSelectionEverywhere } from '@/background/selection-everywhere';
 import { broadcastModelProgress, shouldWarmDownloadedModel } from '@/background/progress-broadcast';
 import { measureQuality } from '@/background/quality';
 import { TranslationBroker } from '@/background/translation-broker';
+import { discoverCaptionsInPage, fetchCaptionBodyInPage } from '@/captions/discover';
+import { isCaptionDiscovery } from '@/captions/timedtext';
 import { grantOriginsFor } from '@/dom/sites';
 import { DEFAULT_MODEL_ID, getModel, type ModelId } from '@/engine/model/catalog';
 import { hasLicenseConsent } from '@/shared/agreement';
@@ -14,6 +16,8 @@ import type { EngineCapabilities } from '@/shared/capabilities';
 import { isEngineCapabilities } from '@/shared/capabilities';
 import {
   isCacheClearRequest,
+  isCaptionDiscoverRequest,
+  isCaptionFetchRequest,
   isEngineCapabilitiesRequest,
   isEngineStatusRequest,
   isEngineTierRequest,
@@ -243,6 +247,41 @@ export default defineBackground(() => {
           sendResponse(false);
         })
         .catch(() => sendResponse(false));
+      return true;
+    }
+
+    if (isCaptionDiscoverRequest(message) || isCaptionFetchRequest(message)) {
+      const tabId = sender.tab?.id;
+      if (tabId === undefined) {
+        sendResponse(null);
+        return true;
+      }
+      const frameId = sender.frameId;
+      const target =
+        typeof frameId === 'number' && frameId >= 0 ? { tabId, frameIds: [frameId] } : { tabId };
+      const injected = isCaptionDiscoverRequest(message)
+        ? browser.scripting.executeScript({
+            target,
+            world: 'MAIN',
+            func: discoverCaptionsInPage,
+          })
+        : browser.scripting.executeScript({
+            target,
+            world: 'MAIN',
+            func: fetchCaptionBodyInPage,
+            args: [message.languageCode, message.url],
+          });
+      void injected.then(
+        (results) => {
+          const value: unknown = results[0]?.result;
+          if (isCaptionDiscoverRequest(message)) {
+            sendResponse(isCaptionDiscovery(value) ? value : null);
+            return;
+          }
+          sendResponse(typeof value === 'string' ? value : null);
+        },
+        () => sendResponse(null),
+      );
       return true;
     }
 

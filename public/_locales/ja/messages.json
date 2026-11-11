@@ -843,5 +843,21 @@
   "selectionEverywhereDenied": {
     "message": "すべてのサイトへのアクセスが許可されなかったため、オフのままです。",
     "description": "Option: run the content script on every site for the selection icon."
+  },
+  "captionTranslating": {
+    "message": "この端末で動画の字幕を翻訳しています。",
+    "description": "Status on the video while caption lines are still being translated."
+  },
+  "captionMissing": {
+    "message": "この動画には翻訳できる字幕ファイルがありません。",
+    "description": "Status when a video has no caption track. Burned-in subtitles are not read."
+  },
+  "captionFailed": {
+    "message": "字幕ファイルを読み取れませんでした。",
+    "description": "Status when a caption track was found but its file was empty or unreadable."
+  },
+  "captionSameLanguage": {
+    "message": "字幕はすでに翻訳先の言語です。",
+    "description": "Status when every caption track is already in the language being translated to."
   }
 }

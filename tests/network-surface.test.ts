@@ -144,15 +144,30 @@ describe('network surface', () => {
         NETWORK_SINKS.some((pattern) => pattern.test(file.code)),
     );
 
-    // The model download, plus the opt-in llama.cpp engine and its connection check, which
-    // may only reach a server on this computer (see the next test).
+    // The model download, the opt-in llama.cpp engine (loopback only, see the next test),
+    // and the caption probe. That probe is injected into the video page and GETs the
+    // caption file the player already loads. The request has no body, so it cannot carry
+    // page text, and the host check below refuses anything that is not the video site.
     expect(reaching.map((file) => file.path).sort()).toEqual(
       [
+        'src/captions/discover.ts',
         'src/engine/local/server-engine.ts',
         'src/engine/model/download.ts',
         'src/ui/LocalEngineField.svelte',
       ].sort(),
     );
+  });
+
+  it('reads a caption file with a GET that carries no page text', () => {
+    const file = files.find((entry) => entry.path === 'src/captions/discover.ts');
+    if (!file) throw new Error('discover.ts was not found');
+
+    const calls = [...file.code.matchAll(/\bfetch\s*\(([^)]*)\)/gu)].map((match) => match[1] ?? '');
+    expect(calls).toEqual(["url, { credentials: 'include' }"]);
+    expect(file.code).toMatch(/protocol !== 'https:'|protocol === 'https:'/);
+    expect(file.code.match(/youtube\|youtu/gu)?.length).toBe(2);
+    expect(file.code).not.toMatch(/\bbody\s*:/u);
+    expect(file.code).not.toMatch(/\bmethod\s*:/u);
   });
 
   it('lets the local engine reach only a server on this computer', () => {
