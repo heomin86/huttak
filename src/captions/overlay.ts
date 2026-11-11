@@ -6,7 +6,8 @@ export type CaptionOverlayKind = 'line' | 'status' | 'hidden';
  * Draws one caption line over the video. The node's shadow is closed and the
  * host is marked `translate="no"` so the page translator never rewrites it.
  * Player captions stay in the DOM (hiding them with `display` makes YouTube
- * stop fetching the track) and are only made invisible.
+ * stop fetching the track). Opacity covers the whole window, including a word
+ * the player reveals with `visibility:visible` as it is spoken.
  */
 export class CaptionOverlay {
   private readonly host: HTMLElement;
@@ -51,8 +52,18 @@ export class CaptionOverlay {
     if (hidePlayerCaptions) {
       style = doc.createElement('style');
       style.dataset.sakuttoCaptionHide = '';
-      style.textContent =
-        '.ytp-caption-window-container,.ytp-caption-window{visibility:hidden !important}';
+      style.textContent = [
+        '.ytp-caption-window-container,',
+        '.ytp-caption-window-container *,',
+        '.ytp-caption-window,',
+        '.ytp-caption-window *,',
+        '.caption-window,',
+        '.caption-window *,',
+        '.captions-text,',
+        '.ytp-caption-segment{',
+        'visibility:hidden !important;opacity:0 !important',
+        '}',
+      ].join('');
       doc.documentElement.append(style);
     }
 

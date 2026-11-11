@@ -38,7 +38,9 @@ export interface CaptionStart {
  *
  * The player's own caption nodes are replaced whenever the clock moves, so writing
  * a translation into them loses the line on the next tick. This session leaves
- * those nodes alone. It runs only while page translation is on, and only on
+ * those nodes alone and draws one phrase at a time. A phrase stays up until its
+ * successor has a translation, so a word the player reveals early cannot replace
+ * the Korean line. It runs only while page translation is on, and only on
  * YouTube and X. X without a caption file is reported; burned-in subtitles and
  * speech recognition are out of scope.
  */
@@ -201,18 +203,46 @@ export class CaptionSession {
     const overlay = this.overlay;
     const video = this.video;
     if (!overlay || !video || this.cues.length === 0) return;
-    const cue = cueAt(this.cues, video.currentTime * 1000);
+    this.quietPlayerCaptions(video);
+    const timeMs = video.currentTime * 1000;
     const rect = video.getBoundingClientRect();
-    if (!cue) {
-      overlay.show('', rect, 'hidden');
+    const cue = cueAt(this.cues, timeMs);
+    const translated = cue ? this.translations.get(cue.id) : undefined;
+    if (cue && translated) {
+      overlay.show(translated, rect, 'line');
       return;
     }
-    const translated = this.translations.get(cue.id);
-    if (!translated) {
+
+    const held = this.previousReady(cue, timeMs);
+    if (held) {
+      overlay.show(held, rect, 'line');
+      return;
+    }
+    if (cue) {
       overlay.show(this.labels.translating, rect, 'status');
       return;
     }
-    overlay.show(translated, rect, 'line');
+    overlay.show('', rect, 'hidden');
+  }
+
+  /**
+   * The latest line that already has a translation. While the line at the clock
+   * is still translating, this is what stays on screen. A pause keeps it briefly
+   * so the reader can finish it, then clears it.
+   */
+  private previousReady(current: Cue | null, timeMs: number): string | null {
+    let text: string | null = null;
+    let endMs = -1;
+    for (const cue of this.cues) {
+      if (current ? cue.startMs >= current.startMs : cue.startMs > timeMs) break;
+      const translated = this.translations.get(cue.id);
+      if (!translated) continue;
+      text = translated;
+      endMs = cue.endMs;
+    }
+    if (!text) return null;
+    if (!current && timeMs - endMs > 1600) return null;
+    return text;
   }
 
   private waitForVideo(signal: AbortSignal): Promise<HTMLVideoElement | null> {
@@ -243,9 +273,20 @@ export class CaptionSession {
     });
   }
 
+  private quietPlayerCaptions(video: HTMLVideoElement): void {
+    const list = video.textTracks;
+    if (!list) return;
+    for (let index = 0; index < list.length; index += 1) {
+      const track = list[index];
+      if (!track || (track.kind !== 'subtitles' && track.kind !== 'captions')) continue;
+      if (track.mode !== 'hidden') track.mode = 'hidden';
+    }
+  }
+
   private attach(video: HTMLVideoElement): void {
     this.detach();
     this.video = video;
+    this.quietPlayerCaptions(video);
     this.onTime = () => this.render();
     video.addEventListener('timeupdate', this.onTime);
     video.addEventListener('seeked', this.onTime);
@@ -329,9 +370,11 @@ function pickVideo(doc: Document): HTMLVideoElement | null {
     (video): video is HTMLVideoElement => video instanceof HTMLVideoElement,
   );
   if (videos.length === 0) return null;
-  let best = videos[0] ?? null;
+  const captioned = videos.filter((video) => captionTrackCount(video) > 0);
+  const pool = captioned.length > 0 ? captioned : videos;
+  let best = pool[0] ?? null;
   let bestArea = -1;
-  for (const video of videos) {
+  for (const video of pool) {
     const rect = video.getBoundingClientRect();
     const area = Math.max(0, rect.width) * Math.max(0, rect.height);
     if (area > bestArea) {
@@ -340,4 +383,15 @@ function pickVideo(doc: Document): HTMLVideoElement | null {
     }
   }
   return best;
+}
+
+function captionTrackCount(video: HTMLVideoElement): number {
+  let count = video.querySelectorAll('track').length;
+  const list = video.textTracks;
+  if (!list) return count;
+  for (let index = 0; index < list.length; index += 1) {
+    const track = list[index];
+    if (track && (track.kind === 'subtitles' || track.kind === 'captions')) count += 1;
+  }
+  return count;
 }
