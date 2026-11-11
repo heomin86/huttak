@@ -843,5 +843,21 @@
   "selectionEverywhereDenied": {
     "message": "모든 사이트 접근 권한을 받지 못해 꺼진 상태로 둡니다.",
     "description": "Option: run the content script on every site for the selection icon."
+  },
+  "captionTranslating": {
+    "message": "이 기기에서 동영상 자막을 번역하는 중입니다.",
+    "description": "Status on the video while caption lines are still being translated."
+  },
+  "captionMissing": {
+    "message": "이 영상에는 번역할 자막 파일이 없습니다.",
+    "description": "Status when a video has no caption track. Burned-in subtitles are not read."
+  },
+  "captionFailed": {
+    "message": "자막 파일을 읽지 못했습니다.",
+    "description": "Status when a caption track was found but its file was empty or unreadable."
+  },
+  "captionSameLanguage": {
+    "message": "자막이 이미 번역하려는 언어입니다.",
+    "description": "Status when every caption track is already in the language being translated to."
   }
 }

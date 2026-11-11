@@ -1,5 +1,6 @@
 import { browser } from 'wxt/browser';
 import { defineContentScript } from 'wxt/utils/define-content-script';
+import { CaptionSession, type CaptionLabels } from '@/captions/session';
 import { listPageBlocks } from '@/dom/blocks';
 import { detectDocumentLanguage } from '@/dom/detect';
 import { fakeTranslate } from '@/dom/fake-engine';
@@ -13,6 +14,8 @@ import {
   isPageCommandRequest,
   isPageInfoRequest,
   isPageStateRequest,
+  requestCaptionBody,
+  requestCaptionDiscovery,
   requestEngineStatus,
   requestEngineWarm,
   type PageCommandName,
@@ -69,6 +72,15 @@ function overlayLabels(): OverlayLabels {
   };
 }
 
+function captionLabels(): CaptionLabels {
+  return {
+    translating: t('captionTranslating'),
+    missing: t('captionMissing'),
+    failed: t('captionFailed'),
+    sameLanguage: t('captionSameLanguage'),
+  };
+}
+
 function getPageInfo(): PageInfo {
   return {
     lang: document.documentElement.lang,
@@ -109,10 +121,40 @@ export default defineContentScript({
       const detected = await detectDocumentLanguage(document);
       session.setDetectedLanguage(detected);
 
+      const captions = new CaptionSession(
+        document,
+        {
+          discover: () => requestCaptionDiscovery(),
+          readCaption: (languageCode, url) => requestCaptionBody(languageCode, url),
+        },
+        { translate: __SAKUTTO_FAKE_ENGINE__ ? fakeTranslate : translateViaBackground },
+        captionLabels(),
+      );
+
+      const syncCaptions = (): void => {
+        void (async () => {
+          const [settings, rule] = await Promise.all([loadSettings(), loadSiteRule(host)]);
+          const state = session.state();
+          captions.setLabels(captionLabels());
+          if (!state.active) {
+            captions.stop();
+            return;
+          }
+          const preferences = preferencesFor(settings, rule, host);
+          captions.start({
+            targetLanguage: state.targetLanguage,
+            sourceLanguage: state.pageLanguage,
+            form: preferences.form,
+            ...(preferences.glossary ? { glossary: preferences.glossary } : {}),
+          });
+        })().catch(() => undefined);
+      };
+
       const applyStored = async (): Promise<void> => {
         const [nextSettings, nextRule] = await Promise.all([loadSettings(), loadSiteRule(host)]);
         session.setLabels(overlayLabels());
         session.setPreferences(preferencesFor(nextSettings, nextRule, host));
+        syncCaptions();
       };
 
       subscribeSettings(() => {
@@ -127,24 +169,25 @@ export default defineContentScript({
           void requestEngineWarm();
           void requestEngineTier(session);
         }
-        void session.translate();
+        void session.translate().then(() => syncCaptions());
       }
-      return session;
+      return { session, syncCaptions };
     })();
 
     const run = async (command: PageCommandName) => {
       const now = Date.now();
       if (lastCommand === command && now - lastCommandAt < 80) {
-        return (await sessionPromise).state();
+        return (await sessionPromise).session.state();
       }
       lastCommand = command;
       lastCommandAt = now;
-      const session = await sessionPromise;
+      const { session, syncCaptions } = await sessionPromise;
       if (!__SAKUTTO_FAKE_ENGINE__) {
         void requestEngineWarm();
         void requestEngineTier(session);
       }
       await session.handle(command);
+      syncCaptions();
       return session.state();
     };
 
@@ -156,13 +199,13 @@ export default defineContentScript({
       }
       if (isModelProgressMessage(message)) {
         if (message.status.state === 'loaded' && !__SAKUTTO_FAKE_ENGINE__) {
-          void sessionPromise.then((session) => requestEngineTier(session, true));
+          void sessionPromise.then(({ session }) => requestEngineTier(session, true));
         }
         return;
       }
       if (!isPageCommandRequest(message) && !isPageStateRequest(message)) return;
 
-      void sessionPromise.then(async (session) => {
+      void sessionPromise.then(async ({ session }) => {
         if (isPageStateRequest(message)) {
           sendResponse(session.state());
           return;

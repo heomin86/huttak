@@ -14,6 +14,7 @@ import { isQualitySample } from './quality';
 import type { DisplayMode, TierPreference } from './settings';
 import { isTierPreference } from './settings';
 import { isRecord } from './object';
+import { isCaptionDiscovery, type CaptionDiscovery } from '@/captions/timedtext';
 
 export interface PageInfo {
   lang: string;
@@ -153,6 +154,30 @@ export function isPageCommandRequest(value: unknown): value is PageCommandReques
 
 export function isPageStateRequest(value: unknown): value is PageStateRequest {
   return isRecord(value) && value.type === 'page:state';
+}
+
+export interface CaptionDiscoverRequest {
+  type: 'caption:discover';
+}
+
+export interface CaptionFetchRequest {
+  type: 'caption:fetch';
+  languageCode: string;
+  url: string;
+}
+
+export function isCaptionDiscoverRequest(value: unknown): value is CaptionDiscoverRequest {
+  return isRecord(value) && value.type === 'caption:discover';
+}
+
+export function isCaptionFetchRequest(value: unknown): value is CaptionFetchRequest {
+  return (
+    isRecord(value) &&
+    value.type === 'caption:fetch' &&
+    typeof value.languageCode === 'string' &&
+    typeof value.url === 'string' &&
+    value.url.startsWith('https://')
+  );
 }
 
 export function isPageViewState(value: unknown): value is PageViewState {
@@ -410,6 +435,33 @@ export async function requestQualitySample(): Promise<QualitySample | null> {
       type: 'quality:sample',
     } satisfies QualitySampleRequest);
     return isQualitySample(response) ? response : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function requestCaptionDiscovery(): Promise<CaptionDiscovery | null> {
+  try {
+    const response: unknown = await browser.runtime.sendMessage({
+      type: 'caption:discover',
+    } satisfies CaptionDiscoverRequest);
+    return isCaptionDiscovery(response) ? response : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function requestCaptionBody(
+  languageCode: string,
+  url: string,
+): Promise<string | null> {
+  try {
+    const response: unknown = await browser.runtime.sendMessage({
+      type: 'caption:fetch',
+      languageCode,
+      url,
+    } satisfies CaptionFetchRequest);
+    return typeof response === 'string' ? response : null;
   } catch {
     return null;
   }
