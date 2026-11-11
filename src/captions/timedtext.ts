@@ -251,15 +251,47 @@ function isHttpsUrl(value: string): boolean {
 }
 
 function finalize(cues: Cue[]): Cue[] {
+  const sorted = stabilizeCues(cues);
+  return sorted.slice(0, MAX_CUES).map((item, index) => ({
+    id: `c${index}`,
+    startMs: item.startMs,
+    endMs: item.endMs,
+    text: item.text.slice(0, MAX_TEXT),
+  }));
+}
+
+/**
+ * YouTube draws automatic captions one spoken word at a time: each tick is either
+ * a new word (`aAppend`), a short cue, or a sliding window over the same line.
+ * Translating those ticks mixes the English still on screen with a Korean line
+ * that arrives after the player has moved on. Collapse a tick into the phrase it
+ * belongs to, and leave a finished subtitle line alone.
+ */
+function stabilizeCues(cues: Cue[]): Cue[] {
   const sorted = [...cues].sort(
     (left, right) => left.startMs - right.startMs || left.endMs - right.endMs,
   );
-  return sorted.slice(0, MAX_CUES).map((cue, index) => ({
-    id: `c${index}`,
-    startMs: cue.startMs,
-    endMs: cue.endMs,
-    text: cue.text.slice(0, MAX_TEXT),
-  }));
+  const stable: Cue[] = [];
+  for (const item of sorted) {
+    const previous = stable[stable.length - 1];
+    if (!previous) {
+      stable.push({ ...item });
+      continue;
+    }
+    if (sameRollingLine(previous, item)) {
+      previous.text = mergedRollingText(previous.text, item.text);
+      previous.startMs = Math.min(previous.startMs, item.startMs);
+      previous.endMs = Math.max(previous.endMs, item.endMs);
+      continue;
+    }
+    if (shouldJoinFragment(previous, item)) {
+      previous.text = joinCaption(previous.text, item.text);
+      previous.endMs = Math.max(previous.endMs, item.endMs);
+      continue;
+    }
+    stable.push({ ...item });
+  }
+  return stable;
 }
 
 function parseJson3(body: string): Cue[] {
@@ -285,9 +317,120 @@ function parseJson3(body: string): Cue[] {
     if (!text || !LETTER.test(text)) continue;
     const duration =
       typeof event.dDurationMs === 'number' && event.dDurationMs > 0 ? event.dDurationMs : 2000;
+    const appending = event.aAppend === 1 || event.aAppend === true;
+    const open = cues[cues.length - 1];
+    if (appending && open) {
+      open.text = joinCaption(open.text, text);
+      open.endMs = Math.max(open.endMs, event.tStartMs + duration);
+      continue;
+    }
     cues.push(cue(event.tStartMs, event.tStartMs + duration, text));
   }
   return cues;
+}
+
+const FRAGMENT_MS = 900;
+const FRAGMENT_GAP_MS = 120;
+const FRAGMENT_WORDS = 4;
+const PHRASE_CHARS = 120;
+
+function sameRollingLine(previous: Cue, next: Cue): boolean {
+  const overlap = Math.min(previous.endMs, next.endMs) - Math.max(previous.startMs, next.startMs);
+  if (overlap <= 80) return false;
+  const previousWords = captionWords(previous.text);
+  const nextWords = captionWords(next.text);
+  if (previousWords.length === 0 || nextWords.length === 0) return false;
+  if (rollOverlap(previousWords, nextWords) > 0) return true;
+  if (containsPhrase(previous.text, next.text) || containsPhrase(next.text, previous.text)) {
+    return true;
+  }
+  const shorter = Math.min(previous.endMs - previous.startMs, next.endMs - next.startMs);
+  const sameStart = normalizeWord(previousWords[0] ?? '') === normalizeWord(nextWords[0] ?? '');
+  return shorter > 0 && overlap > shorter * 0.6 && sameStart;
+}
+
+function shouldJoinFragment(previous: Cue, next: Cue): boolean {
+  const gap = next.startMs - previous.endMs;
+  if (gap > FRAGMENT_GAP_MS || gap < -200) return false;
+  if (endsSentence(previous.text) || previous.text.length >= PHRASE_CHARS) return false;
+  const nextDuration = next.endMs - next.startMs;
+  return nextDuration < FRAGMENT_MS && captionWords(next.text).length <= FRAGMENT_WORDS;
+}
+
+function mergedRollingText(previous: string, next: string): string {
+  const previousWords = captionWords(previous);
+  const nextWords = captionWords(next);
+  const overlap = rollOverlap(previousWords, nextWords);
+  if (overlap > 0 && overlap < previousWords.length) {
+    return cleanCaptionText([...previousWords, ...nextWords.slice(overlap)].join(' '));
+  }
+  if (overlap === previousWords.length && nextWords.length >= previousWords.length) {
+    return cleanCaptionText(next);
+  }
+  if (next.trim().length >= previous.trim().length * 0.8) return cleanCaptionText(next);
+  return cleanCaptionText(previous);
+}
+
+/** Longest suffix of the line already on screen that is the prefix of the next window. */
+function rollOverlap(previous: readonly string[], next: readonly string[]): number {
+  const max = Math.min(previous.length, next.length);
+  let best = 0;
+  for (let size = max; size > 0; size -= 1) {
+    let same = true;
+    for (let index = 0; index < size; index += 1) {
+      const left = normalizeWord(previous[previous.length - size + index] ?? '');
+      const right = normalizeWord(next[index] ?? '');
+      if (left !== right) {
+        same = false;
+        break;
+      }
+    }
+    if (!same) continue;
+    best = size;
+    break;
+  }
+  if (best === 0) return 0;
+  if (best === previous.length || best >= 2) return best;
+  return 0;
+}
+
+function containsPhrase(container: string, phrase: string): boolean {
+  const outer = captionWords(container).map(normalizeWord);
+  const inner = captionWords(phrase).map(normalizeWord);
+  if (inner.length === 0 || inner.length > outer.length) return false;
+  for (let start = 0; start <= outer.length - inner.length; start += 1) {
+    let same = true;
+    for (let index = 0; index < inner.length; index += 1) {
+      if (outer[start + index] !== inner[index]) {
+        same = false;
+        break;
+      }
+    }
+    if (same) return true;
+  }
+  return false;
+}
+
+function joinCaption(previous: string, next: string): string {
+  const spacer = /^\s/.test(next) || /\s$/.test(previous) ? '' : ' ';
+  return cleanCaptionText(`${previous}${spacer}${next}`);
+}
+
+function captionWords(text: string): string[] {
+  return text
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word.length > 0);
+}
+
+function normalizeWord(word: string): string {
+  return word.trim().toLowerCase();
+}
+
+function endsSentence(text: string): boolean {
+  const trimmed = text.trim();
+  if (!/[.!?。？！…]$/.test(trimmed)) return false;
+  return !/(?:^|\s)(?:Mr|Mrs|Ms|Dr|St|vs|etc)\.$/i.test(trimmed);
 }
 
 function parseVtt(body: string): Cue[] {

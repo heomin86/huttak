@@ -123,6 +123,8 @@ const PLAYER_CAPTION_SELECTOR = [
   '.ytp-caption-window-container',
   '.ytp-caption-window',
   '.ytp-caption-segment',
+  '.caption-window',
+  '.captions-text',
 ].join(', ');
 
 const FROZEN_SELECTOR = [

@@ -30,11 +30,13 @@ describe('translatable blocks', () => {
       <div class="ytp-caption-window-container">
         <span class="ytp-caption-segment">Hello there</span>
       </div>
+      <div class="caption-window"><span class="captions-text">word by word</span></div>
       <sakutto-caption>번역된 자막</sakutto-caption>
     `;
 
     expect(countTranslatableBlocks(document)).toBe(1);
     expect(isTranslationExcluded(document.querySelector('.ytp-caption-segment')!)).toBe(true);
+    expect(isTranslationExcluded(document.querySelector('.captions-text')!)).toBe(true);
     expect(isTranslationExcluded(document.querySelector('sakutto-caption')!)).toBe(true);
   });
 

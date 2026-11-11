@@ -88,6 +88,65 @@ describe('caption files', () => {
     expect(cueAt(cues, 2300)).toBeNull();
   });
 
+  it('keeps a spoken phrase together instead of one cue per word', () => {
+    const appended = parseCaptionBody(
+      JSON.stringify({
+        events: [
+          { tStartMs: 0, dDurationMs: 400, segs: [{ utf8: 'Hello' }] },
+          { tStartMs: 400, dDurationMs: 400, aAppend: 1, segs: [{ utf8: ' there' }] },
+          { tStartMs: 800, dDurationMs: 500, aAppend: 1, segs: [{ utf8: ' friend.' }] },
+          { tStartMs: 1400, dDurationMs: 400, segs: [{ utf8: 'Next' }] },
+          { tStartMs: 1800, dDurationMs: 400, segs: [{ utf8: ' line.' }] },
+        ],
+      }),
+    );
+    expect(appended.map((item) => item.text)).toEqual(['Hello there friend.', 'Next line.']);
+    expect(appended[0]).toMatchObject({ startMs: 0, endMs: 1300 });
+    expect(appended[1]).toMatchObject({ startMs: 1400, endMs: 2200 });
+
+    const rolling = parseCaptionBody(
+      JSON.stringify({
+        events: [
+          {
+            tStartMs: 1000,
+            dDurationMs: 4000,
+            segs: [{ utf8: 'Hello everyone and welcome' }],
+          },
+          {
+            tStartMs: 1400,
+            dDurationMs: 3600,
+            segs: [{ utf8: 'everyone and welcome to' }],
+          },
+          {
+            tStartMs: 1800,
+            dDurationMs: 3400,
+            segs: [{ utf8: "and welcome to today's video." }],
+          },
+        ],
+      }),
+    );
+    expect(rolling).toEqual([
+      {
+        id: 'c0',
+        startMs: 1000,
+        endMs: 5200,
+        text: "Hello everyone and welcome to today's video.",
+      },
+    ]);
+
+    const spoken = parseCaptionBody(
+      JSON.stringify({
+        events: [
+          { tStartMs: 0, dDurationMs: 300, segs: [{ utf8: 'The' }] },
+          { tStartMs: 300, dDurationMs: 300, segs: [{ utf8: 'quick' }] },
+          { tStartMs: 600, dDurationMs: 300, segs: [{ utf8: 'brown' }] },
+          { tStartMs: 900, dDurationMs: 400, segs: [{ utf8: 'fox.' }] },
+        ],
+      }),
+    );
+    expect(spoken).toEqual([{ id: 'c0', startMs: 0, endMs: 1300, text: 'The quick brown fox.' }]);
+  });
+
   it('reads WebVTT and srv3', () => {
     const vtt = parseCaptionBody(`WEBVTT
 
@@ -164,9 +223,44 @@ describe('caption translation', () => {
       onCue: (id, text) => done.set(id, text),
     });
 
-    expect(seen).toEqual(['two|three|one']);
+    expect(seen).toEqual(['two', 'three|one']);
     expect(done.get('c1')).toBe('§ko§two');
     expect(done.get('c0')).toBe('§ko§one');
+  });
+
+  it('reports the line on screen before the following lines finish', async () => {
+    let release = (): void => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const engine: Engine = {
+      async *translate(segments: readonly TranslateSegment[], options: TranslateOptions) {
+        if (segments.some((segment) => segment.text !== 'two')) await gate;
+        yield* fakeTranslate(segments, options);
+      },
+    };
+    const cues = [
+      { id: 'c0', startMs: 0, endMs: 1000, text: 'one' },
+      { id: 'c1', startMs: 1000, endMs: 2000, text: 'two' },
+      { id: 'c2', startMs: 2000, endMs: 3000, text: 'three' },
+    ];
+    const done: string[] = [];
+    const pending = translateCues(engine, cues, {
+      targetLanguage: 'ko',
+      sourceLanguage: 'en',
+      form: 'polite',
+      signal: new AbortController().signal,
+      nowMs: 1200,
+      onCue: (_id, text) => done.push(text),
+    });
+
+    for (let attempt = 0; attempt < 40 && done.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(done).toEqual(['§ko§two']);
+    release();
+    await pending;
+    expect(done).toEqual(['§ko§two', '§ko§three', '§ko§one']);
   });
 });
 
@@ -212,9 +306,61 @@ describe('caption session', () => {
     video.currentTime = 1.2;
     video.dispatchEvent(new Event('timeupdate'));
     await waitForCaption((host) => host.dataset.caption === '§ko§Again');
+    expect(document.querySelector('[data-sakutto-caption-hide]')?.textContent).toContain(
+      'opacity:0',
+    );
 
     session.stop();
     expect(captionHost()).toBeNull();
+  });
+
+  it('keeps the current Korean line until the next line is translated', async () => {
+    setPage('https://www.youtube.com/watch?v=abcdefghijk');
+    const video = document.createElement('video');
+    video.currentTime = 0.4;
+    document.body.append(video);
+    let release = (): void => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const session = new CaptionSession(
+      document,
+      {
+        discover: async () => ({
+          site: 'youtube',
+          tracks: [track('en')],
+          resourceUrls: [],
+          inline: [],
+        }),
+        readCaption: async () =>
+          JSON.stringify({
+            events: [
+              { tStartMs: 0, dDurationMs: 1000, segs: [{ utf8: 'Hello' }] },
+              { tStartMs: 1000, dDurationMs: 1000, segs: [{ utf8: 'Later' }] },
+            ],
+          }),
+      },
+      {
+        async *translate(segments, options) {
+          if (segments.some((segment) => segment.text === 'Later')) await gate;
+          yield* fakeTranslate(segments, options);
+        },
+      },
+      labels,
+    );
+
+    session.start(start);
+    await waitForCaption((host) => host.dataset.caption === '§ko§Hello');
+    video.currentTime = 1.2;
+    video.dispatchEvent(new Event('timeupdate'));
+    const held = await waitForCaption(
+      (host) => host.dataset.caption === '§ko§Hello' && host.dataset.state === 'line',
+    );
+    expect(held.dataset.caption).toBe('§ko§Hello');
+
+    release();
+    await waitForCaption((host) => host.dataset.caption === '§ko§Later');
+    session.stop();
   });
 
   it('says when the video has no caption file', async () => {
