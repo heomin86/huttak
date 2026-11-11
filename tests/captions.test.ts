@@ -168,6 +168,15 @@ Second line
 
     const paragraphs = parseCaptionBody('<timedtext><p t="500" d="1000">안녕</p></timedtext>');
     expect(paragraphs).toEqual([{ id: 'c0', startMs: 500, endMs: 1500, text: '안녕' }]);
+
+    const xVtt = parseCaptionBody(`WEBVTT
+
+00:00:00.000 --> 00:00:01.240
+<X-word-ms ms=160,80,120 index=1 character_ranges=0-4,5-6,7-11>Yeah, I mean America 250.</X-word-ms>
+`);
+    expect(xVtt).toEqual([
+      { id: 'c0', startMs: 0, endMs: 1240, text: 'Yeah, I mean America 250.' },
+    ]);
   });
 
   it('picks a manual source track and skips the target language', () => {
@@ -587,5 +596,58 @@ describe('caption probe', () => {
       url: 'https://video.twimg.com/captions/en.vtt',
       automatic: false,
     });
+  });
+
+  it('reads X cues once the empty data track leaves disabled', async () => {
+    setPage('https://x.com/someone/status/99');
+    const video = document.createElement('video');
+    const trackElement = document.createElement('track');
+    trackElement.kind = 'subtitles';
+    trackElement.srclang = 'en';
+    trackElement.label = 'en (auto-generated)';
+    trackElement.src = 'data:,WEBVTT';
+    video.append(trackElement);
+    let mode = 'disabled';
+    const textTrack = {
+      kind: 'subtitles',
+      language: 'en',
+      label: 'en (auto-generated)',
+      get mode(): string {
+        return mode;
+      },
+      set mode(value: string) {
+        mode = value;
+      },
+      get cues(): { startTime: number; endTime: number; text: string }[] | null {
+        if (mode === 'disabled') return null;
+        return [
+          {
+            startTime: 0,
+            endTime: 1.24,
+            text: '<X-word-ms ms=160,80>Yeah, I mean America 250.</X-word-ms>',
+          },
+        ];
+      },
+    };
+    Object.defineProperty(video, 'textTracks', {
+      configurable: true,
+      get: () => [textTrack],
+    });
+    document.body.append(video);
+
+    const discovered = await discoverCaptionsInPage();
+    expect(discovered?.tracks).toEqual([]);
+    expect(discovered?.inline[0]?.cues).toEqual([
+      { id: 'c0', startMs: 0, endMs: 1240, text: 'Yeah, I mean America 250.' },
+    ]);
+  });
+
+  it('does not keep looking when an X video has no subtitle track', async () => {
+    setPage('https://x.com/someone/status/99');
+    document.body.append(document.createElement('video'));
+    const started = Date.now();
+    const discovered = await discoverCaptionsInPage();
+    expect(Date.now() - started).toBeLessThan(1500);
+    expect(discovered).toMatchObject({ site: 'x', tracks: [], inline: [] });
   });
 });

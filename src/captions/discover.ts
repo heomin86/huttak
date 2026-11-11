@@ -179,6 +179,34 @@ export async function discoverCaptionsInPage(): Promise<CaptionDiscovery | null>
     return tracks;
   }
 
+  function hasSubtitleTrack(): boolean {
+    if (document.querySelector('video track')) return true;
+    for (const video of document.querySelectorAll('video')) {
+      const list = video.textTracks;
+      if (!list) continue;
+      for (let index = 0; index < list.length; index += 1) {
+        const track = list[index];
+        if (track && (track.kind === 'subtitles' || track.kind === 'captions')) return true;
+      }
+    }
+    return false;
+  }
+
+  function vttTracks(): CaptionDiscovery['tracks'] {
+    const found: CaptionDiscovery['tracks'] = [];
+    for (const url of resourceUrls()) {
+      if (!url.includes('.vtt') && !url.includes('/subtitles/')) continue;
+      found.push({
+        languageCode: '',
+        name: 'captions',
+        automatic: true,
+        url,
+      });
+      if (found.length >= 40) break;
+    }
+    return found;
+  }
+
   const site = siteOf(location.href);
   if (!site) return null;
 
@@ -196,12 +224,24 @@ export async function discoverCaptionsInPage(): Promise<CaptionDiscovery | null>
   }
   if (tracks.length === 0) tracks = elementTracks();
 
-  const hasTracks = enableTextTracks() || document.querySelector('video track') !== null;
-  if (site === 'x' && hasTracks) {
-    await new Promise((resolve) => {
-      setTimeout(resolve, 350);
-    });
+  enableTextTracks();
+  if (site === 'x') {
+    // X inserts `<track src="data:,WEBVTT">` and leaves it disabled. The cues
+    // stay empty until the mode changes, which is what makes the player fetch
+    // the real WebVTT. One short wait loses that file.
+    const started = Date.now();
+    while (Date.now() - started < 4000) {
+      enableTextTracks();
+      if (inlineCues().length > 0 || elementTracks().length > 0 || vttTracks().length > 0) break;
+      if (!hasSubtitleTrack() && Date.now() - started >= 800) break;
+      await new Promise((resolve) => {
+        setTimeout(resolve, 200);
+      });
+    }
   }
+
+  if (tracks.length === 0) tracks = elementTracks();
+  if (tracks.length === 0) tracks = vttTracks();
 
   return {
     site,
