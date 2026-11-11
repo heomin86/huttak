@@ -2,6 +2,12 @@
 
 Release sections are added by `pnpm release`. Each section lists commit subjects since the previous `vX.Y.Z` tag.
 
+## [1.1.0] - 2026-11-11
+
+### Features
+
+- 유튜브와 X 영상 자막 번역 — 페이지 번역을 켜면 그 영상의 자막을 페이지와 같은 언어로 바꿔 영상 위에 보여 줍니다. 유튜브(일반 영상, Shorts, YouTube Music)와 X(x.com, 트위터)에서 됩니다. 번역은 페이지와 같이 이 기기 안에서 하고, 용어집도 같이 적용합니다. 유튜브 자동 자막은 말이 이어지는 동안에도 번역은 한 문장씩 유지되고, 다음 문장의 번역이 준비되면 그 문장으로 넘어갑니다. 읽는 대상은 영상의 자막 파일이며, 화면 안에 박혀 있는 글자는 포함되지 않습니다. 자막 파일이 없으면 영상에 그 사실을 표시합니다. (#6, #7)
+
 ## [1.0.2] - 2026-11-08
 
 ### Features
