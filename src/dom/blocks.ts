@@ -125,6 +125,7 @@ const PLAYER_CAPTION_SELECTOR = [
   '.ytp-caption-segment',
   '.caption-window',
   '.captions-text',
+  '[data-sakutto-x-caption]',
 ].join(', ');
 
 const FROZEN_SELECTOR = [

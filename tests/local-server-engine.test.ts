@@ -122,6 +122,36 @@ describe('local server engine', () => {
     expect(streamed).toBe('변경 사항을 저장했습니다.');
   });
 
+  it('keeps the last event when the stream ends without a newline', async () => {
+    const encoder = new TextEncoder();
+    const engine = new LocalServerEngine({
+      baseUrl: 'http://127.0.0.1:8080/',
+      fetch: (async () => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ choices: [{ delta: { content: '안녕' } }] })}\n`,
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ choices: [{ delta: { content: '하세요.' } }] })}`,
+              ),
+            );
+            controller.close();
+          },
+        });
+        return new Response(body, { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+
+    const chunks = await collect(
+      engine.translate([{ id: 'a', text: 'Hello there, friend.' }], options()),
+    );
+    expect(chunks.at(-1)?.final).toBe('안녕하세요.');
+  });
+
   it('refuses a server that is not on this computer before sending anything', async () => {
     let called = false;
     const engine = new LocalServerEngine({

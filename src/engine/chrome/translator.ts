@@ -1,3 +1,4 @@
+import { appendDelta } from '../text/commit';
 import { EngineError, isAbortError } from '../errors';
 import type {
   IdentifiedEngine,
@@ -215,7 +216,7 @@ export class ChromeTranslatorEngine implements IdentifiedEngine {
             if (done) break;
             const delta = decodeChunk(value);
             if (delta.length === 0) continue;
-            full += delta;
+            full = appendDelta(full, delta);
             yield { id: segment.id, textDelta: delta, engine: this.kind };
           }
         } finally {

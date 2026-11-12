@@ -22,6 +22,14 @@ export function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(cjk / 2 + other / 4));
 }
 
+/**
+ * Room for the translation to finish. The estimator counts Latin at about four
+ * characters a token and CJK at two, but Korean is closer to one token a
+ * syllable, and a translation is often longer than the source. The old ceiling
+ * (`estimate * 2 + 16`, and at least 32) stopped a Korean sentence mid-word.
+ * The model still stops at its own end token, so a higher ceiling does not
+ * stretch a short translation.
+ */
 export function completionTokenBudget(text: string): number {
-  return Math.max(32, estimateTokens(text) * 2 + 16);
+  return Math.max(48, estimateTokens(text) * 4 + 32);
 }

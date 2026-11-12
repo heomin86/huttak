@@ -291,3 +291,70 @@ export function joinTranslatedSentences(parts: readonly string[], tgt: string): 
 
   return cleaned.join(sentenceSeparator(tgt));
 }
+
+export interface LineSplit {
+  parts: string[];
+  /** Newline run that originally stood between `parts[i]` and `parts[i + 1]`. */
+  breaks: string[];
+}
+
+/**
+ * Splits a source on content newlines, but never inside a placeholder tag.
+ * A block with no newline comes back as one part, unchanged, so a one-line
+ * paragraph keeps the exact string the rest of the pipeline already sends.
+ */
+export function splitKeepingLineBreaks(text: string): LineSplit {
+  const parts: string[] = [];
+  const breaks: string[] = [];
+  let depth = 0;
+  let start = 0;
+  let index = 0;
+
+  while (index < text.length) {
+    if (text[index] === '<') {
+      const end = text.indexOf('>', index + 1);
+      if (end !== -1 && end > index + 1) {
+        const tag = text.slice(index, end + 1);
+        if (/^<\/[A-Za-z][\w-]*\d*>$/u.test(tag)) depth = Math.max(0, depth - 1);
+        else if (/^<[A-Za-z][\w-]*\d*>$/u.test(tag)) depth += 1;
+        index = end + 1;
+        continue;
+      }
+    }
+
+    if (depth === 0 && text[index] === '\n') {
+      let end = index;
+      while (end < text.length && text[end] === '\n') end += 1;
+      parts.push(text.slice(start, index).trim());
+      breaks.push(text.slice(index, end));
+      start = end;
+      index = end;
+      continue;
+    }
+    index += 1;
+  }
+
+  if (parts.length === 0) return { parts: [text], breaks: [] };
+  parts.push(text.slice(start).trim());
+  return { parts, breaks };
+}
+
+/**
+ * Joins finished pieces with the newline run that separated their sources.
+ * A piece that was only a sentence of a longer line has no run of its own and
+ * uses the target language's sentence separator instead.
+ */
+export function joinPreservingBreaks(
+  parts: readonly string[],
+  breaks: readonly (string | undefined)[],
+  tgt: string,
+): string {
+  if (parts.length === 0) return '';
+  let output = parts[0]?.trim() ?? '';
+  for (let index = 1; index < parts.length; index += 1) {
+    const separator = breaks[index - 1];
+    output += separator === undefined ? sentenceSeparator(tgt) : separator;
+    output += parts[index]?.trim() ?? '';
+  }
+  return output;
+}
