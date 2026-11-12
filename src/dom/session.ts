@@ -10,7 +10,12 @@ import {
   type ThroughputSample,
 } from './throughput';
 import { DEFAULT_BATCHING } from '@/engine/text/plan';
-import { chunkForTranslation, joinTranslatedSentences } from '@/engine/text/sentences';
+import { appendDelta, commitPiece, comparableText } from '@/engine/text/commit';
+import {
+  chunkForTranslation,
+  joinPreservingBreaks,
+  splitKeepingLineBreaks,
+} from '@/engine/text/sentences';
 import { isPlainAltS } from '@/shared/shortcuts';
 import { PriorityQueue } from '@/engine/queue/priority-queue';
 import type { EngineKind, GlossaryEntry, TranslateOptions, TranslationChunk } from '@/engine/types';
@@ -146,6 +151,10 @@ interface Live {
   originalChildren: ChildNode[];
   partText: string[];
   partFinal: boolean[];
+  /** Newline run after each piece. `undefined` means the target language's sentence gap. */
+  pieceBreaks: (string | undefined)[];
+  /** Source text of each piece, used to drop a second pass over the same line. */
+  pieceSources: string[];
   rect: DOMRect | null;
   batchToken: number;
 }
@@ -241,6 +250,12 @@ export class PageSession {
   private readonly pointerRoots = new Set<EventTarget>();
   private readonly frameLoads = new Map<HTMLIFrameElement, () => void>();
   private readonly expected = new WeakMap<Text, string>();
+  /**
+   * Translations this session has already painted. A later scan must not send that
+   * text through the model again: mixed Korean and a Latin name fails the script
+   * check and would otherwise be translated a second time.
+   */
+  private readonly produced = new Set<string>();
   /**
    * Blocks the last scan found but could not turn into a translation job. Only a block
    * that owns prose of its own counts: a layout container whose text lives in nested
@@ -534,6 +549,7 @@ export class PageSession {
     for (const item of this.live.values()) this.resetLive(item);
     this.live.clear();
     this.liveByBlock.clear();
+    this.produced.clear();
     this.selection = null;
     this.selectionShown = false;
     this.pointerDown = false;
@@ -828,6 +844,7 @@ export class PageSession {
     if (isAlreadyTargetLanguage(block, this.prefs.targetLanguage, this.detectedLanguage)) return;
 
     const model = buildSegment(block);
+    if (model && this.isProducedSource(model.source)) return;
     if (!model) {
       // A container whose only text belongs to nested blocks is covered by those blocks.
       // Reporting it would turn every page with a menu or a form into a partial result.
@@ -860,6 +877,8 @@ export class PageSession {
       originalChildren: [...block.childNodes],
       partText: [],
       partFinal: [],
+      pieceBreaks: [],
+      pieceSources: [],
       rect: null,
       batchToken: 0,
     };
@@ -894,6 +913,8 @@ export class PageSession {
       originalChildren: [],
       partText: [],
       partFinal: [],
+      pieceBreaks: [],
+      pieceSources: [],
       rect,
       batchToken: 0,
     };
@@ -1169,11 +1190,15 @@ export class PageSession {
         if (chunk.engine) item.engine = chunk.engine;
         if (chunk.textDelta) {
           const before = chunk.restart === true ? '' : (item.partText[index] ?? '');
-          item.partText[index] = before + chunk.textDelta;
-          this.queuePaint(item);
+          item.partText[index] = appendDelta(before, chunk.textDelta);
         }
         if (chunk.final !== undefined) {
-          item.partText[index] = chunk.final;
+          const streamed = item.partText[index] ?? '';
+          item.partText[index] = commitPiece(
+            item.pieceSources[index] ?? item.source,
+            streamed,
+            chunk.final,
+          );
           item.partFinal[index] = true;
           if (item.partFinal.every(Boolean)) this.complete(item);
           else this.queuePaint(item);
@@ -1272,16 +1297,14 @@ export class PageSession {
 
   private complete(item: Live): void {
     if (item.role === 'page' && !this.active) return;
-    const joined = joinTranslatedSentences(
-      item.partText.map((part) => part.trim()).filter((part) => part.length > 0),
-      this.prefs.targetLanguage,
-    );
+    const joined = joinPreservingBreaks(item.partText, item.pieceBreaks, this.prefs.targetLanguage);
     const markup = this.acceptTranslation(
       item,
-      joined.length > 0 ? joined : item.partText.join(''),
+      joined.trim().length > 0 ? joined : item.partText.join(''),
     );
     if (markup === 'retry') return;
     item.translation = markup;
+    this.noteProduced(markup);
     item.state = 'done';
     if (item.translation.trim().length > 0) this.paint(item, false);
     else item.model?.block.removeAttribute('data-sakutto-pending');
@@ -1454,6 +1477,7 @@ export class PageSession {
   private retranslate(): void {
     this.invalidatePaints();
     this.abortRunning(false);
+    this.produced.clear();
     const target = canonicalPageLanguage(this.prefs.targetLanguage);
     for (const item of [...this.live.values()]) {
       if (item.role !== 'page') continue;
@@ -1469,6 +1493,8 @@ export class PageSession {
       item.failures = 0;
       item.partText = [];
       item.partFinal = [];
+      item.pieceBreaks = [];
+      item.pieceSources = [];
       item.state = 'idle';
       this.enqueue(item, true);
     }
@@ -1565,6 +1591,7 @@ export class PageSession {
         item.model.block.removeAttribute('data-sakutto-pending');
         item.model.block.removeAttribute('data-sakutto-id');
         item.model.block.removeAttribute('data-sakutto-engine');
+        item.model.block.querySelectorAll('[data-sakutto-br]').forEach((node) => node.remove());
         for (const node of item.created) node.remove();
         item.created.length = 0;
       }
@@ -1823,11 +1850,31 @@ export class PageSession {
     return element?.closest('[data-sakutto-id]') ?? null;
   }
 
+  private noteProduced(text: string): void {
+    for (const value of [text, stripPlaceholderTokens(text)]) {
+      const key = comparableText(value);
+      if (key.length >= 12) this.produced.add(key);
+    }
+  }
+
+  private isProducedSource(source: string): boolean {
+    const key = comparableText(source);
+    return key.length >= 12 && this.produced.has(key);
+  }
+
   private refreshBlock(block: Element): void {
     const existing = this.liveByBlock.get(block);
     if (!existing || existing.state === 'running') return;
     const model = buildSegment(block);
     if (model && model.source === existing.source) return;
+    if (
+      model &&
+      existing.translation.trim().length > 0 &&
+      comparableText(model.source) === comparableText(existing.translation)
+    ) {
+      return;
+    }
+    if (model && this.isProducedSource(model.source)) return;
     const index = existing.index;
     this.forgetLive(existing, false);
     this.addBlock(block, index);
@@ -2155,9 +2202,52 @@ function glossaryKey(glossary: readonly GlossaryEntry[] | undefined): string {
 
 function expandSource(item: Live): { id: string; text: string }[] {
   const source = item.flatten ? stripPlaceholderTokens(item.source) : item.source;
-  const pieces = chunkForTranslation(source);
-  if (pieces.length <= 1) return [{ id: item.id, text: source }];
-  return pieces.map((text, index) => ({ id: `${item.id}#${String(index)}`, text }));
+  const lines = splitKeepingLineBreaks(source);
+  if (lines.parts.length <= 1) {
+    const pieces = chunkForTranslation(source);
+    if (pieces.length <= 1) {
+      item.pieceBreaks = [undefined];
+      item.pieceSources = [source];
+      return [{ id: item.id, text: source }];
+    }
+    item.pieceBreaks = pieces.map(() => undefined);
+    item.pieceSources = [...pieces];
+    return pieces.map((text, index) => ({ id: `${item.id}#${String(index)}`, text }));
+  }
+
+  const requests: { id: string; text: string }[] = [];
+  const breaks: (string | undefined)[] = [];
+  const sources: string[] = [];
+  let index = 0;
+  for (let line = 0; line < lines.parts.length; line += 1) {
+    const part = lines.parts[line] ?? '';
+    const chunks = chunkForTranslation(part);
+    const units = chunks.length > 0 ? chunks : [part];
+    for (let chunk = 0; chunk < units.length; chunk += 1) {
+      const text = units[chunk] ?? '';
+      requests.push({ id: `${item.id}#${String(index)}`, text });
+      sources.push(text);
+      const lastOfLine = chunk === units.length - 1;
+      const lastLine = line === lines.parts.length - 1;
+      if (!lastOfLine) breaks.push(undefined);
+      else if (!lastLine) breaks.push(lines.breaks[line] ?? '\n');
+      else breaks.push(undefined);
+      index += 1;
+    }
+  }
+  item.pieceBreaks = breaks;
+  item.pieceSources = sources;
+  return requests;
+}
+
+function partialText(item: Live, target: string): string {
+  const parts: string[] = [];
+  for (let index = 0; index < item.partFinal.length; index += 1) {
+    if (item.partFinal[index] !== true) break;
+    parts.push(item.partText[index] ?? '');
+  }
+  if (parts.length === 0) return '';
+  return joinPreservingBreaks(parts, item.pieceBreaks, target);
 }
 
 function placeholderGlossary(
@@ -2189,12 +2279,6 @@ function partIndex(id: string): number {
   if (marker === -1) return 0;
   const index = Number(id.slice(marker + 1));
   return Number.isInteger(index) ? index : 0;
-}
-
-function partialText(item: Live, target: string): string {
-  const parts = item.partText.filter((part) => part.trim().length > 0);
-  if (parts.length === 0) return '';
-  return joinTranslatedSentences(parts, target);
 }
 
 /**

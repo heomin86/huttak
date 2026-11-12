@@ -158,7 +158,7 @@ function buildFrame(element: Element, allocateId: () => string, freezeValues = f
       const current = gaps[gaps.length - 1];
       if (!current) continue;
       current.push({ node: child as Text, original: value });
-      source += value;
+      source += contributedText(value);
       continue;
     }
 
@@ -245,14 +245,26 @@ const LINE_BREAK = '\uE000';
  * look long enough to be kept out of a packed request, and (through the newline rule) put
  * a whole table row in a request of its own.
  *
- * Runs of whitespace inside a text slot collapse to a single space, and the whole source is
- * trimmed. A real `<br>` keeps its newline, because that break is content: a batch is joined
- * at newlines, so a block that spans lines must stay in a request of its own. The slot nodes
- * keep their original bytes, so restoring the page is unaffected.
+ * A whitespace-only text node is indentation between elements, so it becomes one space.
+ * A node that also has words keeps the newline runs inside it: a tweet is one text node
+ * of paragraphs separated by blank lines, and flattening those runs glues the paragraphs
+ * together. Leading and trailing newlines of that node are still indentation. A real
+ * `<br>` keeps its newline. The slot nodes keep their original bytes, so restoring the
+ * page is unaffected.
  */
+function contributedText(value: string): string {
+  if (!/\S/u.test(value)) return ' ';
+  return value
+    .replace(/[^\S\n]+/gu, ' ')
+    .replace(/ *\n */gu, '\n')
+    .replace(/\n{3,}/gu, '\n\n')
+    .replace(/^\n+|\n+$/gu, '');
+}
+
 function collapseSource(value: string): string {
   return value
-    .replace(/\s+/gu, ' ')
-    .replace(new RegExp(`\\s*${LINE_BREAK}\\s*`, 'gu'), '\n')
+    .replace(new RegExp(`[^\\S\\n]*${LINE_BREAK}[^\\S\\n]*`, 'gu'), '\n')
+    .replace(/[^\S\n]+/gu, ' ')
+    .replace(/\n{3,}/gu, '\n\n')
     .trim();
 }

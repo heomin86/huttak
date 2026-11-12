@@ -34,8 +34,16 @@ afterEach(() => {
   document.documentElement.removeAttribute('data-sakutto-source-lang');
 });
 
-/** The longest a prompt can keep the page still on the CPU: one full piece of prefill. */
-const CPU_PIECE_PREFILL_MS = (estimateTokens('a'.repeat(DEFAULT_PIECE_CHARS)) + 24) * 30;
+/**
+ * The longest one finished piece can keep the page still. A piece is swapped in
+ * whole, so the quiet stretch is that piece's prefill and its decode, not the
+ * gap between tokens. It is still one piece: a packed paragraph prompt is longer.
+ */
+function pieceStillMs(costs: { prefillMsPerToken: number; decodeMsPerToken: number }): number {
+  const promptTokens = estimateTokens('a'.repeat(DEFAULT_PIECE_CHARS)) + 24;
+  const outputTokens = Math.ceil((DEFAULT_PIECE_CHARS + 8) / 2);
+  return promptTokens * costs.prefillMsPerToken + outputTokens * costs.decodeMsPerToken;
+}
 
 describe('whole-page translation keeps moving', () => {
   it('fills the first screen first and never freezes for a packed prefill on the CPU', async () => {
@@ -47,14 +55,15 @@ describe('whole-page translation keeps moving', () => {
     expect(result.firstPaintMs).toBeLessThan(2_000);
     expect(result.firstScreenMs).toBeLessThan(result.totalMs * 0.3);
     // A 512-token packed prompt held the page still for its whole prefill (8.6 s here).
-    expect(result.longestStillMs).toBeLessThan(CPU_PIECE_PREFILL_MS);
+    // One finished piece may now take its full decode as well, and must not take longer.
+    expect(result.longestStillMs).toBeLessThan(pieceStillMs(CPU_COSTS));
   }, 60_000);
 
   it('keeps the page moving on the WebGPU tier', async () => {
     const result = await runFlow({ costs: GPU_COSTS, tier: 'g', firstScreen: FIRST_SCREEN });
 
     expect(result.firstScreenMs).toBeLessThan(result.totalMs * 0.3);
-    expect(result.longestStillMs).toBeLessThan(1_000);
+    expect(result.longestStillMs).toBeLessThan(pieceStillMs(GPU_COSTS));
   }, 60_000);
 
   it('keeps tok/s on the bar through a prefill longer than the hold window', async () => {

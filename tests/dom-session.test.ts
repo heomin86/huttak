@@ -230,7 +230,7 @@ describe('page session', () => {
     expect(document.querySelector('sakutto-note')).toBeNull();
   });
 
-  it('streams plain text and keeps placeholder segments intact until the final text', async () => {
+  it('keeps the source until a piece is finished, then swaps that piece in whole', async () => {
     document.documentElement.lang = 'en';
     document.body.innerHTML = '<p>Hello</p><p>See <a href="/docs">docs</a></p>';
     let release!: () => void;
@@ -253,10 +253,10 @@ describe('page session', () => {
 
     await session.translate();
     for (let attempt = 0; attempt < 10; attempt += 1) {
-      if (document.body.textContent?.includes('途中')) break;
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
-    expect(document.body.textContent).toContain('途中');
+    expect(document.body.textContent).not.toContain('途中');
+    expect(document.body.textContent).toContain('Hello');
     expect(document.querySelector('a')?.getAttribute('href')).toBe('/docs');
 
     release();
@@ -954,10 +954,10 @@ describe('page session', () => {
 
     const pending = session.translate();
     for (let attempt = 0; attempt < 20; attempt += 1) {
-      if (document.body.textContent?.includes('訳')) break;
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
-    expect(document.body.textContent).toContain('訳');
+    expect(document.body.textContent).toContain('Hello world');
+    expect(document.body.textContent).not.toContain('訳');
 
     const view = document.defaultView;
     view?.history.replaceState({}, '', `${view.location.pathname}${view.location.search}`);
@@ -1408,10 +1408,9 @@ describe('page session', () => {
 
     const pending = session.translate();
     for (let attempt = 0; attempt < 20; attempt += 1) {
-      if (document.querySelector('#lead')?.textContent?.includes('大阪')) break;
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
-    expect(document.querySelector('#lead')?.textContent).toContain('大阪');
+    expect(document.querySelector('#lead')?.textContent).toBe('See Osaka today.');
     expect(document.querySelector('a')?.getAttribute('href')).toBe('/osaka');
 
     release();
@@ -1514,10 +1513,10 @@ describe('page translation corrections', () => {
 
     const pending = session.translate();
     for (let attempt = 0; attempt < 20; attempt += 1) {
-      if (document.body.textContent?.includes('大阪')) break;
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
-    expect(document.body.textContent).toContain('大阪');
+    expect(document.body.textContent).toContain('Hello');
+    expect(document.body.textContent).not.toContain('大阪');
     session.restore();
     release();
     await pending;
@@ -2266,7 +2265,7 @@ describe('long page translation', () => {
     expect(perf.engineMs).toBeGreaterThanOrEqual(calls * 55);
   });
 
-  it('streams PLaMo tokens into an on-screen paragraph that has no built-in draft', async () => {
+  it('swaps a finished PLaMo piece in at once instead of painting each token', async () => {
     document.documentElement.lang = 'en';
     document.body.innerHTML = '<p id="lead">Hello world from the article.</p>';
     const spy = vi
@@ -2292,7 +2291,8 @@ describe('long page translation', () => {
       await session.translate();
       await session.whenIdle();
 
-      expect(painted).toEqual(['こんに', 'こんにちは', 'こんにちは、世界', 'こんにちは、世界。']);
+      expect(painted.every((text) => text === 'Hello world from the article.')).toBe(true);
+      expect(document.querySelector('#lead')?.textContent).toBe('こんにちは、世界。');
     } finally {
       spy.mockRestore();
     }
@@ -2388,13 +2388,14 @@ describe('translated text contrast', () => {
 
     const pending = session.translate();
     for (let attempt = 0; attempt < 30; attempt += 1) {
-      if (document.querySelector('#lead')?.textContent?.includes('こんにちは')) break;
+      if (document.querySelector('#lead')?.getAttribute('data-sakutto-pending') === '1') break;
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
     const lead = document.querySelector('#lead');
     if (!lead) throw new Error('missing lead');
     expect(lead.getAttribute('data-sakutto-pending')).toBe('1');
+    expect(lead.textContent).toBe('Hello world from the article.');
     expect(opacityOf(lead)).toBe('1');
 
     release();
@@ -2705,5 +2706,111 @@ describe('coverage reporting does not over-report', () => {
 
     expect(session.state().skipped).toBe(0);
     expect(document.documentElement.dataset.sakuttoState).toBe('translated');
+  });
+});
+
+describe('page translation display', () => {
+  it('keeps blank lines in a pre-wrapped paragraph and the last characters of each line', async () => {
+    document.documentElement.lang = 'en';
+    document.body.innerHTML =
+      '<p id="tweet" style="white-space: pre-wrap">Magister runs the ads.\n\nI am my own heaviest user.</p>';
+    const session = start(
+      document,
+      engineOf(async function* (segments) {
+        for (const segment of segments) {
+          yield {
+            id: segment.id,
+            textDelta: '잘',
+            engine: 'plamo' as const,
+          };
+          yield {
+            id: segment.id,
+            final: `번역:${segment.text}`,
+            engine: 'plamo' as const,
+          };
+        }
+      }),
+    );
+
+    await session.translate();
+    await session.whenIdle();
+
+    const tweet = document.querySelector('#tweet');
+    const text = tweet?.textContent ?? '';
+    expect(text).toContain('번역:Magister runs the ads.');
+    expect(text).toContain('번역:I am my own heaviest user.');
+    expect(text).not.toContain('잘');
+    const broken =
+      (tweet?.innerHTML.includes('\n') ?? false) || /<br/i.test(tweet?.innerHTML ?? '');
+    expect(broken).toBe(true);
+  });
+
+  it('does not send a painted translation through the model again', async () => {
+    document.documentElement.lang = 'en';
+    document.body.innerHTML = '<p id="lead">Hello world from the article.</p>';
+    const seen: string[] = [];
+    const session = start(
+      document,
+      engineOf(async function* (segments) {
+        for (const segment of segments) {
+          seen.push(segment.text);
+          yield {
+            id: segment.id,
+            final: '제가 직접 제일 많이 사용하는 플러그인이에요.',
+            engine: 'plamo' as const,
+          };
+        }
+      }),
+    );
+
+    await session.translate();
+    await session.whenIdle();
+    const lead = document.querySelector('#lead');
+    lead?.replaceChildren(document.createTextNode('제가 직접 제일 많이 사용하는 플러그인이에요.'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await session.whenIdle();
+
+    expect(seen).toEqual(['Hello world from the article.']);
+    expect(lead?.textContent).toBe('제가 직접 제일 많이 사용하는 플러그인이에요.');
+  });
+
+  it('keeps a streamed tail when the final text stops early, and drops a second pass', async () => {
+    document.documentElement.lang = 'en';
+    document.body.innerHTML = '<p id="lead">Hello world from the article.</p>';
+    const session = start(
+      document,
+      engineOf(async function* (segments) {
+        const segment = segments[0];
+        if (!segment) return;
+        const full = '안녕하세요. 마지막 글자까지 남습니다.';
+        yield { id: segment.id, textDelta: full, engine: 'plamo' as const };
+        yield { id: segment.id, final: '안녕하세요. 마지막', engine: 'plamo' as const };
+      }),
+    );
+
+    await session.translate();
+    await session.whenIdle();
+    expect(document.querySelector('#lead')?.textContent).toBe(
+      '안녕하세요. 마지막 글자까지 남습니다.',
+    );
+
+    session.restore();
+    document.body.innerHTML = '<p id="again">Hello world from the article.</p>';
+    const repeated = start(
+      document,
+      engineOf(async function* (segments) {
+        const segment = segments[0];
+        if (!segment) return;
+        const once = '안녕하세요. 이 문장은 한 번만 보여야 합니다.';
+        yield { id: segment.id, final: `${once}${once}`, engine: 'plamo' as const };
+      }),
+    );
+    await repeated.translate();
+    await repeated.whenIdle();
+    const shown = document.querySelector('#again')?.textContent ?? '';
+    expect(shown).toBe('안녕하세요. 이 문장은 한 번만 보여야 합니다.');
+    expect(shown.indexOf('안녕하세요. 이 문장은 한 번만')).toBe(
+      shown.lastIndexOf('안녕하세요. 이 문장은 한 번만'),
+    );
   });
 });

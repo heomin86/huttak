@@ -104,8 +104,8 @@ describe('translation planning', () => {
   it('estimates CJK tokens and completion budgets conservatively', () => {
     expect(estimateTokens('こんにちは')).toBe(3);
     expect(estimateTokens('hello world')).toBe(3);
-    expect(completionTokenBudget('hello')).toBe(32);
-    expect(completionTokenBudget('こんにちは世界')).toBe(32);
-    expect(completionTokenBudget('a'.repeat(200))).toBe(2 * estimateTokens('a'.repeat(200)) + 16);
+    expect(completionTokenBudget('hello')).toBe(48);
+    expect(completionTokenBudget('こんにちは世界')).toBe(48);
+    expect(completionTokenBudget('a'.repeat(200))).toBe(4 * estimateTokens('a'.repeat(200)) + 32);
   });
 });

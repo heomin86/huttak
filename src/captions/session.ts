@@ -11,7 +11,7 @@ import {
   type CaptionDiscovery,
   type Cue,
 } from './timedtext';
-import { CaptionOverlay } from './overlay';
+import { CaptionOverlay, xCaptionNodes } from './overlay';
 import { translateCues } from './translate';
 
 export interface CaptionLabels {
@@ -174,6 +174,7 @@ export class CaptionSession {
     }
 
     this.cues = cues;
+    if (site === 'x') this.overlay?.enableXHide();
     this.render();
     try {
       await translateCues(this.engine, cues, {
@@ -205,6 +206,9 @@ export class CaptionSession {
     if (!overlay || !video || this.cues.length === 0) return;
     this.quietPlayerCaptions(video);
     const timeMs = video.currentTime * 1000;
+    if (captionSite(this.href()) === 'x') {
+      overlay.conceal(xCaptionNodes(video, this.captionTexts(timeMs)));
+    }
     const rect = video.getBoundingClientRect();
     const cue = cueAt(this.cues, timeMs);
     const translated = cue ? this.translations.get(cue.id) : undefined;
@@ -271,6 +275,20 @@ export class CaptionSession {
         finish(signal.aborted ? null : pickVideo(this.doc));
       }, 8000);
     });
+  }
+
+  /** Source lines the player may still be painting: the one at the clock, and the one before it. */
+  private captionTexts(timeMs: number): string[] {
+    const current = cueAt(this.cues, timeMs);
+    const texts: string[] = [];
+    if (current) texts.push(current.text);
+    let previous: Cue | null = null;
+    for (const cue of this.cues) {
+      if (current ? cue.startMs >= current.startMs : cue.startMs > timeMs) break;
+      if (cue !== current) previous = cue;
+    }
+    if (previous) texts.push(previous.text);
+    return texts;
   }
 
   private quietPlayerCaptions(video: HTMLVideoElement): void {

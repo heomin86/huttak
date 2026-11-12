@@ -143,11 +143,17 @@ describe('packed page requests', () => {
     await session.translate();
     await session.whenIdle();
 
-    const multiline = requests.find((batch) =>
-      batch.some((text) => text.includes('First line') && text.includes('Second line')),
+    const multiline = requests.find(
+      (batch) =>
+        batch.some((text) => text.includes('First line')) &&
+        batch.some((text) => text.includes('Second line')),
     );
-    expect(multiline).toHaveLength(1);
-    expect(multiline?.[0]).toContain('\n');
+    expect(multiline).toBeDefined();
+    expect(multiline?.some((text) => text.includes('Short'))).toBe(false);
+    const block = document.querySelector('#multi');
+    expect(block?.textContent).toContain('訳:First line');
+    expect(block?.textContent).toContain('訳:Second line');
+    expect(block?.innerHTML).toMatch(/<br/i);
   });
 
   it('trims the page indentation out of a source before packing it', async () => {

@@ -472,6 +472,59 @@ describe('caption session', () => {
     session.stop();
   });
 
+  it('hides the English line X paints inside the player and leaves the controls', async () => {
+    setPage('https://x.com/someone/status/1234567890');
+    const player = document.createElement('div');
+    player.dataset.testid = 'videoPlayer';
+    const video = document.createElement('video');
+    video.currentTime = 0.2;
+    const caption = document.createElement('span');
+    caption.textContent = 'From the track';
+    const controls = document.createElement('button');
+    controls.textContent = 'CC';
+    const tweet = document.createElement('div');
+    tweet.dataset.testid = 'tweetText';
+    tweet.textContent = 'From the track';
+    player.append(video, caption, controls);
+    document.body.append(player, tweet);
+
+    const session = new CaptionSession(
+      document,
+      {
+        discover: async () => ({
+          site: 'x',
+          tracks: [],
+          resourceUrls: [],
+          inline: [
+            {
+              languageCode: 'en',
+              cues: [{ id: 'c0', startMs: 0, endMs: 2000, text: 'From the track' }],
+            },
+          ],
+        }),
+        readCaption: async () => null,
+      },
+      { translate: fakeTranslate },
+      labels,
+    );
+
+    session.start(start);
+    await waitForCaption((host) => host.dataset.caption === '§ko§From the track');
+
+    expect(caption.getAttribute('data-sakutto-x-caption')).toBe('');
+    expect(controls.hasAttribute('data-sakutto-x-caption')).toBe(false);
+    expect(tweet.hasAttribute('data-sakutto-x-caption')).toBe(false);
+    const css = document.querySelector('[data-sakutto-caption-hide]')?.textContent ?? '';
+    expect(css).toContain('data-sakutto-x-caption');
+    expect(css).toContain('visibility:hidden');
+    expect(css).toContain('opacity:0');
+    expect(css).not.toContain('display:none');
+
+    session.stop();
+    expect(caption.hasAttribute('data-sakutto-x-caption')).toBe(false);
+    expect(document.querySelector('[data-sakutto-caption-hide]')).toBeNull();
+  });
+
   it('does nothing on a page that is not YouTube or X', () => {
     setPage('https://example.com/article');
     document.body.append(document.createElement('video'));

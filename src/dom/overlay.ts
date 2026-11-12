@@ -41,6 +41,7 @@ sakutto-line {
   color: inherit;
   font: inherit;
   line-height: 1.55;
+  white-space: pre-line;
 }
 /*
  * Older builds painted a "quick translation" badge next to Chrome drafts. Nothing renders

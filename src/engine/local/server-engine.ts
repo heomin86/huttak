@@ -166,7 +166,31 @@ function read<T>(value: T | (() => T)): T {
   return typeof value === 'function' ? (value as () => T)() : value;
 }
 
-/** Reads `data:` lines from an SSE body and yields the content deltas. */
+function readDataLine(line: string): string | 'done' | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('data:')) return null;
+  const payload = trimmed.slice(5).trim();
+  if (payload === '[DONE]') return 'done';
+  try {
+    const parsed = JSON.parse(payload) as {
+      choices?: { delta?: { content?: unknown } }[];
+      content?: unknown;
+    };
+    // `/v1/chat/completions` streams choices[0].delta; `/completion` streams content.
+    const content = parsed.choices?.[0]?.delta?.content ?? parsed.content;
+    return typeof content === 'string' && content.length > 0 ? content : null;
+  } catch {
+    // A keep-alive or a partial line; the next read completes it.
+    return null;
+  }
+}
+
+/**
+ * Reads `data:` lines from an SSE body and yields the content deltas.
+ * The last event often has no trailing newline, and the decoder holds a
+ * trailing multibyte sequence until it is flushed. Dropping either one
+ * cuts the last characters off the translation.
+ */
 async function* streamDeltas(body: ReadableStream<Uint8Array>): AsyncIterable<string> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -174,27 +198,21 @@ async function* streamDeltas(body: ReadableStream<Uint8Array>): AsyncIterable<st
   try {
     for (;;) {
       const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+      buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+      if (done) buffer += decoder.decode();
       let newline = buffer.indexOf('\n');
       while (newline !== -1) {
-        const line = buffer.slice(0, newline).trim();
+        const line = buffer.slice(0, newline);
         buffer = buffer.slice(newline + 1);
         newline = buffer.indexOf('\n');
-        if (!line.startsWith('data:')) continue;
-        const payload = line.slice(5).trim();
-        if (payload === '[DONE]') return;
-        try {
-          const parsed = JSON.parse(payload) as {
-            choices?: { delta?: { content?: unknown } }[];
-            content?: unknown;
-          };
-          // `/v1/chat/completions` streams choices[0].delta; `/completion` streams content.
-          const content = parsed.choices?.[0]?.delta?.content ?? parsed.content;
-          if (typeof content === 'string' && content.length > 0) yield content;
-        } catch {
-          // A keep-alive or a partial line; the next read completes it.
-        }
+        const parsed = readDataLine(line);
+        if (parsed === 'done') return;
+        if (parsed) yield parsed;
+      }
+      if (done) {
+        const parsed = readDataLine(buffer);
+        if (parsed && parsed !== 'done') yield parsed;
+        break;
       }
     }
   } finally {

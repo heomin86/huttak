@@ -28,6 +28,7 @@ interface Frame {
 
 export function applyTranslation(model: SegmentModel, translation: string, created: Text[]): void {
   discardCreated(created);
+  removeInsertedBreaks(model.block);
   const parts = parsePlaceholders(translation, placeholderIds(model));
   const root: Frame = { element: model.block, gaps: model.gaps, children: model.children };
   if (!parts || !applyFrame(root, parts, created)) {
@@ -47,12 +48,15 @@ export function restoreSegment(model: SegmentModel, created: Text[]): void {
 
 export function restoreStructure(model: SegmentModel, created: Text[]): void {
   discardCreated(created);
+  removeInsertedBreaks(model.block);
   removeTranslationUi(model.block);
   restoreChildOrder(ordered(model));
   for (const slot of allSlots(model)) slot.node.nodeValue = slot.original;
 }
 
 export function paintPlain(model: SegmentModel, translation: string, created: Text[]): void {
+  discardCreated(created);
+  removeInsertedBreaks(model.block);
   writeFlat(model, visibleTranslation(translation), created);
 }
 
@@ -76,6 +80,24 @@ export function removeTranslationUi(block: Element): void {
 function discardCreated(created: Text[]): void {
   for (const node of created) node.remove();
   created.length = 0;
+}
+
+const INSERTED_BREAK = 'data-sakutto-br';
+
+function removeInsertedBreaks(root: ParentNode): void {
+  for (const node of [...root.querySelectorAll(`[${INSERTED_BREAK}]`)]) node.remove();
+}
+
+function preservesNewlines(node: Node): boolean {
+  const element = node instanceof Element ? node : node.parentElement;
+  if (!element) return false;
+  const view = element.ownerDocument.defaultView;
+  const computed = view ? view.getComputedStyle(element).whiteSpace : '';
+  const declared = /\bwhite-space\s*:\s*([^;]+)/iu.exec(element.getAttribute('style') ?? '');
+  const value = (computed || declared?.[1] || '').trim();
+  return (
+    value === 'pre' || value === 'pre-wrap' || value === 'pre-line' || value === 'break-spaces'
+  );
 }
 
 interface OrderedFrame {
@@ -143,12 +165,10 @@ function writeGapsInPlace(frame: Frame, gapTexts: readonly string[], created: Te
     if (slots.length === 0) {
       if (value.length === 0) continue;
       const anchor = frame.children[index]?.element ?? null;
-      const node = frame.element.ownerDocument.createTextNode(value);
-      frame.element.insertBefore(node, anchor);
-      created.push(node);
+      insertFresh(frame.element, anchor, value, created);
       continue;
     }
-    writeSlots(slots, value);
+    writeSlots(slots, value, created);
   }
 }
 
@@ -179,12 +199,28 @@ function reorder(
   };
 
   const desired: Node[] = [];
+  const pushText = (value: string): void => {
+    if (!value.includes('\n') || preservesNewlines(frame.element)) {
+      desired.push(takeText(value));
+      return;
+    }
+    const lines = value.split('\n');
+    lines.forEach((line, index) => {
+      if (index > 0) {
+        const br = frame.element.ownerDocument.createElement('br');
+        br.setAttribute(INSERTED_BREAK, '');
+        desired.push(br);
+      }
+      desired.push(takeText(line));
+    });
+  };
+
   for (let index = 0; index < tags.length; index += 1) {
-    desired.push(takeText(gapTexts[index] ?? ''));
+    pushText(gapTexts[index] ?? '');
     const inline = byId.get(tags[index]?.id ?? '');
     if (inline) desired.push(inline.element);
   }
-  desired.push(takeText(gapTexts[tags.length] ?? ''));
+  pushText(gapTexts[tags.length] ?? '');
 
   while (cursor < pool.length) {
     const extra = pool[cursor];
@@ -220,26 +256,129 @@ function isTranslationChrome(node: Node): boolean {
 function writeFlat(model: SegmentModel, value: string, created: Text[]): void {
   const slots = allSlots(model);
   if (slots.length === 0) {
+    writeInto(model.block, model.block.firstChild, value, created);
+    return;
+  }
+
+  writeSlots(slots, value, created);
+}
+
+function writeSlots(slots: readonly TextSlot[], value: string, created: Text[]): void {
+  const first = slots[0];
+  if (!first) return;
+  const parent = first.node.parentNode;
+  if (!parent) return;
+
+  const groups = value.includes('\n') ? groupsSplitByBreaks(slots) : null;
+  const lines = value.split(/\n+/u);
+  if (groups && groups.length === lines.length) {
+    for (let index = 0; index < groups.length; index += 1) {
+      const group = groups[index] ?? [];
+      const head = group[0];
+      if (!head) continue;
+      head.node.nodeValue = lines[index] ?? '';
+      for (const slot of group.slice(1)) slot.node.nodeValue = '';
+    }
+    return;
+  }
+
+  if (!value.includes('\n') || preservesNewlines(first.node)) {
+    first.node.nodeValue = value;
+    for (const slot of slots.slice(1)) slot.node.nodeValue = '';
+    return;
+  }
+
+  const pieces = value.split('\n');
+  first.node.nodeValue = pieces[0] ?? '';
+  let after: Node = first.node;
+  for (let index = 1; index < pieces.length; index += 1) {
+    const br = first.node.ownerDocument.createElement('br');
+    br.setAttribute(INSERTED_BREAK, '');
+    const text = first.node.ownerDocument.createTextNode(pieces[index] ?? '');
+    const next = after.nextSibling;
+    parent.insertBefore(br, next);
+    parent.insertBefore(text, next);
+    created.push(text);
+    after = text;
+  }
+  for (const slot of slots.slice(1)) slot.node.nodeValue = '';
+}
+
+/**
+ * Text slots the page already separates with its own `<br>` elements. One group
+ * per run of breaks, so a blank line (`<br><br>`) stays one separator and the
+ * translation of each side lands in the slot that was already there.
+ */
+function groupsSplitByBreaks(slots: readonly TextSlot[]): TextSlot[][] | null {
+  const parent = slots[0]?.node.parentNode;
+  if (!parent || !slots.every((slot) => slot.node.parentNode === parent)) return null;
+  const byNode = new Map(slots.map((slot) => [slot.node, slot]));
+  const groups: TextSlot[][] = [];
+  let current: TextSlot[] = [];
+  for (const child of parent.childNodes) {
+    const slot = byNode.get(child as Text);
+    if (slot) {
+      current.push(slot);
+      continue;
+    }
+    if (
+      child instanceof Element &&
+      child.tagName === 'BR' &&
+      !child.hasAttribute(INSERTED_BREAK) &&
+      current.length > 0
+    ) {
+      groups.push(current);
+      current = [];
+    }
+  }
+  if (current.length > 0) groups.push(current);
+  return groups.length > 1 ? groups : null;
+}
+
+function insertFresh(parent: Node, anchor: Node | null, value: string, created: Text[]): void {
+  const doc = parent.ownerDocument;
+  if (!doc) return;
+  const pieces = value.includes('\n') && !preservesNewlines(parent) ? value.split('\n') : [value];
+  pieces.forEach((piece, index) => {
+    if (index > 0) {
+      const br = doc.createElement('br');
+      br.setAttribute(INSERTED_BREAK, '');
+      parent.insertBefore(br, anchor);
+    }
+    if (piece.length === 0 && pieces.length === 1) return;
+    const node = doc.createTextNode(piece);
+    parent.insertBefore(node, anchor);
+    created.push(node);
+  });
+}
+
+function writeInto(parent: Node, anchor: Node | null, value: string, created: Text[]): void {
+  const doc = parent.ownerDocument;
+  if (!doc) return;
+  if (!value.includes('\n') || preservesNewlines(parent)) {
     const existing = created[0];
-    if (existing) {
+    if (existing && existing.parentNode === parent) {
       existing.nodeValue = value;
       return;
     }
     if (value.length === 0) return;
-    const node = model.block.ownerDocument.createTextNode(value);
-    model.block.insertBefore(node, model.block.firstChild);
+    const node = doc.createTextNode(value);
+    parent.insertBefore(node, anchor);
     created.push(node);
     return;
   }
 
-  writeSlots(slots, value);
-}
-
-function writeSlots(slots: readonly TextSlot[], value: string): void {
-  const first = slots[0];
-  if (!first) return;
-  first.node.nodeValue = value;
-  for (const slot of slots.slice(1)) slot.node.nodeValue = '';
+  const pieces = value.split('\n');
+  pieces.forEach((piece, index) => {
+    if (index > 0) {
+      const br = doc.createElement('br');
+      br.setAttribute(INSERTED_BREAK, '');
+      parent.insertBefore(br, anchor);
+    }
+    const node = doc.createTextNode(piece);
+    parent.insertBefore(node, anchor);
+    created.push(node);
+  });
 }
 
 function ensureChild(block: Element, tag: string): HTMLElement {
