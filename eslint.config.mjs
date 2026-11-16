@@ -17,6 +17,9 @@ export default tseslint.config(
       'public/**',
       'vendor/**',
       'launch-video/**',
+      'macos/.cache/**',
+      'macos/dist/**',
+      'macos/Huttak/.build/**',
     ],
   },
   js.configs.recommended,
@@ -45,7 +48,13 @@ export default tseslint.config(
     },
   },
   {
-    files: ['*.{js,mjs,cjs,ts}', 'scripts/**/*', 'tests/**/*', 'e2e/**/*'],
+    files: [
+      '*.{js,mjs,cjs,ts}',
+      'scripts/**/*',
+      'tests/**/*',
+      'e2e/**/*',
+      'macos/**/*.{js,mjs,ts}',
+    ],
     languageOptions: {
       globals: {
         ...globals.node,

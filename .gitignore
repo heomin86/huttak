@@ -36,3 +36,5 @@ public/licenses/emscripten-LICENSE.txt
 public/licenses/dawn-LICENSE.txt
 public/licenses/svelte-LICENSE.txt
 .DS_Store
+macos/Huttak/.build/
+macos/.cache/
