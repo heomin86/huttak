@@ -8,6 +8,33 @@ private let consentCopy = """
 PLaMo Community License가 적용됩니다. 개인·학술 이용은 등록 없이 가능하고, 회사 업무로 쓰는 경우에는 라이선스 조건을 확인해야 합니다.
 """
 
+private let permissionCopy = """
+Huttak이 앞쪽 앱에서 선택한 글만 읽으려면 손쉬운 사용을 켜야 합니다. 암호 필드는 읽지 않습니다.
+
+시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용(macOS 최신 버전에서는 기기 제어 및 데이터 접근)에서 Huttak을 켜 주세요. 목록에 없으면 Finder에서 Huttak.app을 그 목록으로 끌어다 놓습니다.
+
+권한을 켜면 글을 드래그할 때 옆에 ㅎ이 뜨고, ⌃⌥S로도 번역합니다.
+"""
+
+private enum HuttakLog {
+    static func write(_ message: String) {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Huttak", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("huttak.log")
+        let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
+        guard let data = line.data(using: .utf8) else { return }
+        if FileManager.default.fileExists(atPath: url.path),
+           let handle = try? FileHandle(forWritingTo: url) {
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+            try? handle.close()
+        } else {
+            try? data.write(to: url)
+        }
+    }
+}
+
 private var hotkeyTarget: AppDelegate?
 
 private func hotkeyPressed(
@@ -34,11 +61,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var anchor = CGRect.zero
     private var config: LaunchConfig?
     private var trusted = false
+    private var explainingPermission = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         hotkeyTarget = self
         overlay.onOffer = { [weak self] in self?.beginTranslation(consentIfNeeded: true) }
         overlay.onConsent = { [weak self] in self?.runTranslation(consent: true) }
+        overlay.onSecondary = { [weak self] in self?.openSettings() }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem?.button?.title = "ㅎ"
         statusItem?.button?.toolTip = "Huttak 선택 번역"
@@ -50,6 +79,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.refreshTrust()
         }
         refreshTrust()
+        if !trusted { presentPermission() }
+        HuttakLog.write("launch trusted=\(trusted)")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -60,12 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func translateFromHotkey() {
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            if let selected = SelectionReader.read() {
-                self.offeredText = selected.text
-                self.anchor = selected.rect
-            }
-            self.beginTranslation(consentIfNeeded: true)
+            self?.beginTranslation(consentIfNeeded: true)
         }
     }
 
@@ -113,13 +139,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             &hotkeyHandler
         )
         let hotKeyID = EventHotKeyID(signature: OSType(0x4854_414B), id: 1)
-        RegisterEventHotKey(
+        let status = RegisterEventHotKey(
             UInt32(kVK_ANSI_S),
             UInt32(controlKey | optionKey),
             hotKeyID,
             GetApplicationEventTarget(),
             0,
             &hotKey
+        )
+        HuttakLog.write("hotkey status=\(status)")
+    }
+
+    private func presentPermission() {
+        explainingPermission = true
+        overlay.show(
+            near: noticeAnchor(),
+            heading: "손쉬운 사용 권한이 필요합니다",
+            body: permissionCopy,
+            busy: false,
+            consent: false,
+            actionTitle: "설정 열기",
+            activate: true
         )
     }
 
@@ -134,8 +174,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if now == trusted { return }
         trusted = now
         rebuildMenu()
+        HuttakLog.write("accessibility \(now)")
         if now {
             installMonitors()
+            if explainingPermission {
+                explainingPermission = false
+                overlay.show(
+                    near: noticeAnchor(),
+                    heading: "권한을 확인했습니다",
+                    body: "글을 드래그하면 옆에 ㅎ이 뜹니다. 단축키는 ⌃⌥S입니다.",
+                    busy: false,
+                    consent: false,
+                    activate: true
+                )
+            }
         }
     }
 
@@ -174,22 +226,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func beginTranslation(consentIfNeeded: Bool) {
         guard trusted else {
-            overlay.show(
-                near: anchorOrMouse(),
-                heading: "손쉬운 사용 권한이 필요합니다",
-                body: "시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용에서 Huttak을 켜 주세요. 그 권한으로 앞쪽 앱에서 선택한 글만 읽습니다.",
-                busy: true,
-                consent: false
-            )
+            HuttakLog.write("translate blocked: accessibility off")
+            presentPermission()
             promptForTrust()
             return
         }
-        let text = SelectionReader.read()?.text ?? offeredText
+        if let selected = SelectionReader.readForCommand() {
+            offeredText = selected.text
+            anchor = selected.rect
+        }
+        let text = offeredText
+        HuttakLog.write("translate chars=\(text.count)")
         guard !text.isEmpty else {
             overlay.show(
                 near: anchorOrMouse(),
                 heading: "선택한 글이 없습니다",
-                body: "번역할 글을 드래그한 뒤 ㅎ 버튼을 누르거나 ⌃⌥S를 누르세요.",
+                body: "번역할 글을 드래그한 뒤 옆에 뜨는 ㅎ을 누르거나 ⌃⌥S를 누르세요. 글을 읽지 못하면 그 앱이 선택 영역을 알려 주지 않는 경우입니다.",
                 busy: true,
                 consent: false
             )
@@ -211,7 +263,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 let health = try await translator.health()
                 if consentIfNeeded && !health.consent {
-                    overlay.show(near: anchor, heading: "이 Mac 안에서 번역", body: consentCopy, busy: false, consent: true)
+                    overlay.show(
+                        near: anchor == .zero ? noticeAnchor() : anchor,
+                        heading: "이 Mac 안에서 번역",
+                        body: consentCopy,
+                        busy: false,
+                        consent: true,
+                        activate: true
+                    )
                     return
                 }
                 runTranslation(consent: health.consent)
@@ -276,7 +335,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         let translate = NSMenuItem(title: "선택한 글 번역    ⌃⌥S", action: #selector(menuTranslate), keyEquivalent: "")
         translate.target = self
-        translate.isEnabled = trusted
         menu.addItem(translate)
         if !trusted {
             let note = NSMenuItem(title: "손쉬운 사용 권한이 필요합니다", action: nil, keyEquivalent: "")
@@ -303,15 +361,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return CGRect(origin: mouse, size: .zero)
     }
 
+    private func noticeAnchor() -> CGRect {
+        let visible = NSScreen.main?.visibleFrame ?? CGRect(x: 80, y: 80, width: 800, height: 600)
+        return CGRect(x: visible.maxX - 24, y: visible.maxY - 24, width: 1, height: 1)
+    }
+
     @objc private func menuTranslate() {
-        if let selected = SelectionReader.read() {
-            offeredText = selected.text
-            anchor = selected.rect
-        }
         beginTranslation(consentIfNeeded: true)
     }
 
     @objc private func openSettings() {
+        promptForTrust()
+        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
         let urls = [
             "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility",
             "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",

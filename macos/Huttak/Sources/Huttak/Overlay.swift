@@ -3,6 +3,7 @@ import AppKit
 final class TranslationOverlay: NSObject {
     var onOffer: (() -> Void)?
     var onConsent: (() -> Void)?
+    var onSecondary: (() -> Void)?
     var onCopy: (() -> Void)?
 
     private let offerPanel = NSPanel(
@@ -21,6 +22,7 @@ final class TranslationOverlay: NSObject {
     private let body = NSTextView()
     private let copyButton = NSButton(title: "복사", target: nil, action: nil)
     private let consentButton = NSButton(title: "동의하고 번역", target: nil, action: nil)
+    private var actionIsConsent = false
 
     override init() {
         super.init()
@@ -44,15 +46,39 @@ final class TranslationOverlay: NSObject {
         offerPanel.orderOut(nil)
     }
 
-    func show(near rect: CGRect, heading: String, body: String, busy: Bool, consent: Bool) {
+    func show(
+        near rect: CGRect,
+        heading: String,
+        body: String,
+        busy: Bool,
+        consent: Bool,
+        actionTitle: String? = nil,
+        activate: Bool = false
+    ) {
         self.heading.stringValue = heading
         self.body.string = body
-        copyButton.isEnabled = !busy && !consent && !body.isEmpty
+        if consent {
+            consentButton.title = "동의하고 번역"
+            consentButton.isHidden = false
+            actionIsConsent = true
+        } else if let actionTitle {
+            consentButton.title = actionTitle
+            consentButton.isHidden = false
+            actionIsConsent = false
+        } else {
+            consentButton.isHidden = true
+            actionIsConsent = false
+        }
+        copyButton.isEnabled = !busy && !consent && actionTitle == nil && !body.isEmpty
         copyButton.title = "복사"
-        consentButton.isHidden = !consent
         hideOffer()
+        resultPanel.level = .statusBar
         place(resultPanel, near: rect, size: resultPanel.frame.size)
         resultPanel.orderFrontRegardless()
+        if activate {
+            NSApp.activate()
+            resultPanel.makeKeyAndOrderFront(nil)
+        }
     }
 
     func hide() {
@@ -132,7 +158,7 @@ final class TranslationOverlay: NSObject {
     }
 
     private func prepare(_ panel: NSPanel) {
-        panel.level = .floating
+        panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
@@ -157,7 +183,11 @@ final class TranslationOverlay: NSObject {
     }
 
     @objc private func consentClicked() {
-        onConsent?()
+        if actionIsConsent {
+            onConsent?()
+        } else {
+            onSecondary?()
+        }
     }
 
     @objc private func copyClicked() {

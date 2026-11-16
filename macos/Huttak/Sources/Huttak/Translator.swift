@@ -56,6 +56,7 @@ final class TranslatorService {
         guard FileManager.default.fileExists(atPath: config.translator) else {
             throw TranslatorClientError.failed("번역 엔진 묶음이 없습니다. macos/run.sh로 다시 실행해 주세요.")
         }
+        stopStaleTranslators()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: config.node)
         process.arguments = [config.translator]
@@ -109,6 +110,25 @@ final class TranslatorService {
     func stop() {
         process?.terminate()
         process = nil
+    }
+
+    /// A previous Huttak that was killed left its translator running and holding the port.
+    private func stopStaleTranslators() {
+        let listing = Process()
+        listing.executableURL = URL(fileURLWithPath: "/bin/ps")
+        listing.arguments = ["-ax", "-o", "pid=,command="]
+        let pipe = Pipe()
+        listing.standardOutput = pipe
+        do { try listing.run() } catch { return }
+        listing.waitUntilExit()
+        let text = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        for line in text.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard let space = trimmed.firstIndex(of: " ") else { continue }
+            let command = trimmed[trimmed.index(after: space)...].trimmingCharacters(in: .whitespaces)
+            guard command.contains("translator.mjs"), let pid = Int32(trimmed[..<space]) else { continue }
+            kill(pid, SIGTERM)
+        }
     }
 
     private func append(_ data: Data, to keyPath: ReferenceWritableKeyPath<TranslatorService, String>) {

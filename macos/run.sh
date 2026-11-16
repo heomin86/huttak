@@ -12,6 +12,12 @@ if [[ -z "$NODE_BIN" ]]; then
 fi
 LLAMA_BIN="$(bash "$ROOT/macos/translator/build-llama.sh")"
 
+# Replacing the bundle while Huttak is running makes Launch Services
+# report that the executable is missing.
+killall Huttak >/dev/null 2>&1 || true
+pkill -f "$ROOT/macos/dist/Huttak.app/Contents/Resources/translator.mjs" >/dev/null 2>&1 || true
+sleep 0.3
+
 swift build -c release --package-path "$ROOT/macos/Huttak"
 node "$ROOT/macos/translator/bundle.mjs" "$ROOT/macos/.cache/translator.mjs"
 
@@ -38,6 +44,8 @@ writeFileSync(
 );
 EOF
 codesign --force --sign - "$APP"
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+"$LSREGISTER" -f "$APP" >/dev/null 2>&1 || true
 echo "Huttak.app: $APP"
 echo "Grant Accessibility to Huttak in System Settings → Privacy & Security → Accessibility."
 if [[ "${HUTTAK_NO_OPEN:-}" != "1" ]]; then
