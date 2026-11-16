@@ -40,7 +40,8 @@
     "bench:build:live": "node scripts/verify-wllama.mjs && node scripts/sync-licenses.mjs && SAKUTTO_E2E_REAL=1 wxt build",
     "bench:serve": "node scripts/bench/static.ts",
     "bench:history": "node scripts/bench/report.ts",
-    "release": "node scripts/release/cli.ts"
+    "release": "node scripts/release/cli.ts",
+    "mac": "bash macos/run.sh"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
