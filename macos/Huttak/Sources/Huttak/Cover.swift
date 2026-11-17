@@ -56,7 +56,7 @@ final class InPlaceCover: NSObject {
         while size > 8 {
             field.font = style.font(size: size)
             let needed = field.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: box.width, height: .greatestFiniteMagnitude)).height ?? 0
-            if needed <= box.height + 1 { break }
+            if ceil(needed) + 2 <= box.height { break }
             size -= 0.5
         }
         field.font = style.font(size: size)
@@ -72,7 +72,7 @@ final class InPlaceCover: NSObject {
         field.cell?.wraps = true
         // Top-aligned like the original: the label is only as tall as its text.
         let needed = ceil(field.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: box.width, height: .greatestFiniteMagnitude)).height ?? box.height)
-        let height = min(box.height, needed)
+        let height = min(box.height, needed + 4)
         field.frame = NSRect(x: box.minX, y: box.maxY - height, width: box.width, height: height)
         let container = NSView(frame: NSRect(origin: .zero, size: frame.size))
         container.wantsLayer = true

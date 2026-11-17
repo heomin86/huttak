@@ -37,7 +37,27 @@ enum SelectionReader {
             return selected
         }
         if let window = elementAttribute(app, kAXFocusedWindowAttribute) {
-            return search(window, remaining: 80)
+            if let found = search(window, remaining: 80) { return found }
+            // Electron apps often report no focused element after a mouse selection in
+            // read-only content. The document's own selection is on its web area.
+            if let web = webArea(in: window), let selected = markerSelection(around: web) {
+                return selected
+            }
+        }
+        return nil
+    }
+
+    private static func webArea(in root: AXUIElement) -> AXUIElement? {
+        var queue: [(AXUIElement, Int)] = [(root, 0)]
+        var visited = 0
+        while !queue.isEmpty, visited < 600 {
+            let (element, depth) = queue.removeFirst()
+            visited += 1
+            if stringAttribute(element, kAXRoleAttribute) == "AXWebArea" { return element }
+            guard depth < 14 else { continue }
+            for child in children(of: element) ?? [] {
+                queue.append((child, depth + 1))
+            }
         }
         return nil
     }
@@ -357,8 +377,12 @@ enum SelectionReader {
         elementAttribute(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute)
     }
 
+    /// The system-wide focused application is sometimes missing for Electron apps; the
+    /// frontmost process is the same app.
     private static func focusedApplication() -> AXUIElement? {
-        elementAttribute(AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute)
+        if let app = elementAttribute(AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute) { return app }
+        guard let front = NSWorkspace.shared.frontmostApplication else { return nil }
+        return AXUIElementCreateApplication(front.processIdentifier)
     }
 
     private static func elementAttribute(_ element: AXUIElement, _ name: String) -> AXUIElement? {
