@@ -8,8 +8,19 @@ struct SelectedText {
     let rect: CGRect
     /// One rectangle per visual line of the selection. The cover paints their union.
     let covers: [CGRect]
-    /// Source point size, or 0 when the app did not report a font.
-    let fontSize: CGFloat
+    /// Font and colors the app reported for the original. Colors from the screen are added later.
+    let style: CoverStyle
+    /// Paragraphs and list items of a web selection, in order. Empty for plain text views.
+    /// When there are several, `text` holds one line per block.
+    var blocks: [SelectionBlock] = []
+}
+
+struct SelectionBlock {
+    /// The list number or bullet the app draws itself, such as "1. ". It stays visible.
+    let marker: String
+    let text: String
+    /// The block's text runs in screen coordinates. Its translation is drawn over their union.
+    let rects: [CGRect]
 }
 
 enum SelectionReader {
@@ -19,6 +30,7 @@ enum SelectionReader {
     /// Selection exposed by the accessibility tree. Safe to call while the pointer is moving.
     static func read() -> SelectedText? {
         guard AXIsProcessTrusted() else { return nil }
+        if let app = focusedApplication() { enableWebAccessibility(app) }
         if let element = focusedElement(), let selected = selection(in: element) { return selected }
         guard let app = focusedApplication() else { return nil }
         if let element = elementAttribute(app, kAXFocusedUIElementAttribute), let selected = selection(in: element) {
@@ -45,12 +57,170 @@ enum SelectionReader {
         if stringAttribute(element, kAXSubroleAttribute) == kAXSecureTextFieldSubrole { return nil }
         let raw = stringAttribute(element, kAXSelectedTextAttribute) ?? ""
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
+        guard !trimmed.isEmpty else { return markerSelection(around: element) }
         let range = selectedRange(element)
-        let covers = lineRects(element, text: raw, range: range)
-        let union = covers.dropFirst().reduce(covers.first ?? .zero) { $0.union($1) }
-        let font = range.flatMap { fontSize(element, range: $0) } ?? 0
-        return SelectedText(text: trimmed, rect: union, covers: covers, fontSize: font)
+        var covers = lineRects(element, text: raw, range: range)
+        covers = covers.filter { $0.width > 1 && $0.height > 1 }
+        if covers.isEmpty, let web = markerSelection(around: element, fallbackText: trimmed), !web.covers.isEmpty {
+            return web
+        }
+        let style = range.flatMap { rangeStyle(element, range: $0) } ?? CoverStyle()
+        return make(text: trimmed, covers: covers, style: style)
+    }
+
+    private static func make(
+        text: String,
+        covers: [CGRect],
+        style: CoverStyle = CoverStyle(),
+        blocks: [SelectionBlock] = []
+    ) -> SelectedText {
+        let usable = covers.filter { $0.width > 1 && $0.height > 1 }
+        let union = usable.dropFirst().reduce(usable.first ?? .zero) { $0.union($1) }
+        let anchor = usable.isEmpty ? CGRect(origin: NSEvent.mouseLocation, size: .zero) : union
+        // Line breaks between blocks are what keep paragraphs and list items apart in the
+        // translation; web views report the selection as one run-on string.
+        let joined = blocks.count > 1 ? blocks.map { $0.marker + $0.text }.joined(separator: "\n") : text
+        return SelectedText(text: joined, rect: anchor, covers: usable, style: style, blocks: blocks.count > 1 ? blocks : [])
+    }
+
+    // MARK: Web views (Chrome, Safari, Electron)
+
+    private static var webAccessibilityPids = Set<pid_t>()
+
+    /// Chromium and Electron build their accessibility tree only after a client asks for it.
+    /// Without this, Chrome reports no selected text and no selection bounds.
+    private static func enableWebAccessibility(_ app: AXUIElement) {
+        var pid: pid_t = 0
+        AXUIElementGetPid(app, &pid)
+        guard pid != getpid(), webAccessibilityPids.insert(pid).inserted else { return }
+        AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+    }
+
+    /// Web content reports its selection as a text-marker range instead of a character range.
+    /// The focused element is often a child of the web area, so the parents are tried as well.
+    private static func markerSelection(around element: AXUIElement, fallbackText: String = "") -> SelectedText? {
+        var current: AXUIElement? = element
+        for _ in 0..<12 {
+            guard let node = current else { break }
+            if let markers = rawAttribute(node, "AXSelectedTextMarkerRange") {
+                let read = (parameterized(node, "AXStringForTextMarkerRange", markers))
+                    .flatMap { ($0 as? String) ?? ($0 as? NSAttributedString)?.string }?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let text = read.isEmpty ? fallbackText : read
+                if !text.isEmpty {
+                    let attributed = parameterized(node, "AXAttributedStringForTextMarkerRange", markers) as? NSAttributedString
+                    let found = markerCovers(node, markers: markers, text: text)
+                    return make(
+                        text: text,
+                        covers: found.covers,
+                        style: attributed.map(style(from:)) ?? CoverStyle(),
+                        blocks: found.blocks
+                    )
+                }
+            }
+            current = elementAttribute(node, kAXParentAttribute)
+        }
+        return nil
+    }
+
+    /// Chromium's bounds for a marker range are unreliable: a range that ends at a paragraph
+    /// boundary stretches to the bottom of the view. The text runs inside that area are used
+    /// instead: every run whose text is part of the selection is covered, grouped by the
+    /// paragraph or list item it belongs to.
+    private static func markerCovers(
+        _ node: AXUIElement,
+        markers: CFTypeRef,
+        text: String
+    ) -> (covers: [CGRect], blocks: [SelectionBlock]) {
+        guard let raw = parameterized(node, "AXBoundsForTextMarkerRange", markers).flatMap(cgRect),
+              raw.width > 1, raw.height > 1
+        else { return ([], []) }
+        let wanted = normalized(text)
+        var blocks: [(owner: AXUIElement, marker: String, text: String, rects: [CGRect])] = []
+        var partial: CGRect?
+        var budget = 3000
+        func visit(_ element: AXUIElement, depth: Int, owner: AXUIElement, marker: String) {
+            guard budget > 0, depth < 40 else { return }
+            budget -= 1
+            let frame = frameOf(element)
+            if let frame, !frame.intersects(raw) { return }
+            let role = stringAttribute(element, kAXRoleAttribute) ?? ""
+            if role == kAXStaticTextRole {
+                let value = stringAttribute(element, kAXValueAttribute) ?? ""
+                let compact = normalized(value)
+                guard let frame, !compact.isEmpty, frame.width > 1, frame.height > 1 else { return }
+                if wanted.contains(compact) {
+                    if let last = blocks.last, CFEqual(last.owner, owner) {
+                        blocks[blocks.count - 1].text += value
+                        blocks[blocks.count - 1].rects.append(frame)
+                    } else {
+                        blocks.append((owner, marker, value, [frame]))
+                    }
+                } else if compact.contains(wanted) {
+                    partial = frame
+                }
+                return
+            }
+            // A group that is only styling (bold, italic, a link) stays inside its paragraph.
+            let subrole = stringAttribute(element, kAXSubroleAttribute) ?? ""
+            let inline = subrole.hasSuffix("StyleGroup") || role == "AXLink"
+            let isBlock = role == kAXGroupRole && !inline && !CFEqual(element, node)
+            let kids = children(of: element) ?? []
+            var childMarker = isBlock ? "" : marker
+            if isBlock, let first = kids.first, stringAttribute(first, kAXRoleAttribute) == "AXListMarker" {
+                childMarker = stringAttribute(first, kAXValueAttribute) ?? ""
+            }
+            for child in kids {
+                visit(child, depth: depth + 1, owner: isBlock ? element : owner, marker: childMarker)
+            }
+        }
+        visit(node, depth: 0, owner: node, marker: "")
+        let converted: [SelectionBlock] = blocks.compactMap { block in
+            let rects = block.rects.map(screenRect).filter { $0.width > 1 && $0.height > 1 }
+            let body = block.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rects.isEmpty, !body.isEmpty else { return nil }
+            return SelectionBlock(marker: block.marker, text: body, rects: rects)
+        }
+        if !converted.isEmpty {
+            return (converted.flatMap(\.rects), converted)
+        }
+        // A selection inside one run: the marker bounds are right unless they spill past it.
+        if let partial {
+            let clipped = raw.height <= partial.height + 4 ? raw : partial
+            let screen = screenRect(clipped)
+            return (screen.width > 1 && screen.height > 1 ? [screen] : [], [])
+        }
+        return ([], [])
+    }
+
+    private static func normalized(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    private static func frameOf(_ element: AXUIElement) -> CGRect? {
+        guard let position = rawAttribute(element, kAXPositionAttribute),
+              let size = rawAttribute(element, kAXSizeAttribute),
+              CFGetTypeID(position) == AXValueGetTypeID(), CFGetTypeID(size) == AXValueGetTypeID()
+        else { return nil }
+        var point = CGPoint.zero
+        var extent = CGSize.zero
+        guard AXValueGetValue(position as! AXValue, .cgPoint, &point),
+              AXValueGetValue(size as! AXValue, .cgSize, &extent)
+        else { return nil }
+        return CGRect(origin: point, size: extent)
+    }
+
+    private static func rawAttribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+        var raw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name as CFString, &raw) == .success else { return nil }
+        return raw
+    }
+
+    private static func parameterized(_ element: AXUIElement, _ name: String, _ parameter: CFTypeRef) -> CFTypeRef? {
+        var raw: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(element, name as CFString, parameter, &raw) == .success
+        else { return nil }
+        return raw
     }
 
     private static func secureFocused() -> Bool {
@@ -100,19 +270,17 @@ enum SelectionReader {
             }
         }
         guard let copied, !copied.isEmpty else { return nil }
-        return SelectedText(
-            text: copied,
-            rect: CGRect(origin: NSEvent.mouseLocation, size: .zero),
-            covers: [],
-            fontSize: 0
-        )
+        if let web = focusedElement().flatMap({ markerSelection(around: $0, fallbackText: copied) }), !web.covers.isEmpty {
+            return web
+        }
+        return make(text: copied, covers: [])
     }
 
     /// Line rectangles for the selected range. A multi-line selection is several bounds,
     /// matching the lines the extension would replace inside one block.
     private static func lineRects(_ element: AXUIElement, text: String, range: CFRange?) -> [CGRect] {
         guard let range else {
-            return boundsForSelectedRange(element).map { [usableScreenRect($0)] } ?? []
+            return boundsForSelectedRange(element).map { [screenRect($0)] } ?? []
         }
         let ns = text as NSString
         var rects: [CGRect] = []
@@ -130,7 +298,7 @@ enum SelectionReader {
             if length > 0 {
                 let piece = CFRange(location: range.location + line.location, length: length)
                 if let raw = bounds(element, range: piece) {
-                    let screen = usableScreenRect(raw)
+                    let screen = screenRect(raw)
                     if screen.width > 1, screen.height > 1 {
                         rects.append(screen)
                     }
@@ -140,10 +308,10 @@ enum SelectionReader {
         }
         if !rects.isEmpty { return rects }
         if let whole = bounds(element, range: range) {
-            let screen = usableScreenRect(whole)
+            let screen = screenRect(whole)
             if screen.width > 1, screen.height > 1 { return [screen] }
         }
-        return boundsForSelectedRange(element).map { [usableScreenRect($0)] } ?? []
+        return boundsForSelectedRange(element).map { [screenRect($0)] } ?? []
     }
 
     private static func selectedRange(_ element: AXUIElement) -> CFRange? {
@@ -154,20 +322,35 @@ enum SelectionReader {
         return cfRange(raw)
     }
 
-    private static func fontSize(_ element: AXUIElement, range: CFRange) -> CGFloat? {
+    private static func rangeStyle(_ element: AXUIElement, range: CFRange) -> CoverStyle? {
         var stored = range
-        guard let rangeValue = AXValueCreate(.cfRange, &stored) else { return nil }
-        var raw: CFTypeRef?
-        guard AXUIElementCopyParameterizedAttributeValue(
-            element,
-            kAXAttributedStringForRangeParameterizedAttribute as CFString,
-            rangeValue,
-            &raw
-        ) == .success, let raw else { return nil }
-        guard let attributed = raw as? NSAttributedString, attributed.length > 0 else { return nil }
-        let font = attributed.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
-        guard let size = font?.pointSize, size > 0 else { return nil }
-        return size
+        guard let rangeValue = AXValueCreate(.cfRange, &stored),
+              let attributed = parameterized(element, kAXAttributedStringForRangeParameterizedAttribute, rangeValue)
+                as? NSAttributedString
+        else { return nil }
+        return style(from: attributed)
+    }
+
+    /// Accessibility attributed strings carry the font as an `AXFont` dictionary and the color
+    /// as `AXForegroundColor`. Apps fill in as much as they know; Chromium gives only the size.
+    static func style(from attributed: NSAttributedString) -> CoverStyle {
+        var style = CoverStyle()
+        guard attributed.length > 0 else { return style }
+        let attributes = attributed.attributes(at: 0, effectiveRange: nil)
+        if let font = attributes[.font] as? NSFont {
+            style.fontName = font.fontName
+            style.fontSize = font.pointSize
+        }
+        if let font = attributes[NSAttributedString.Key("AXFont")] as? [String: Any] {
+            if let size = (font["AXFontSize"] as? NSNumber)?.doubleValue, size > 0 { style.fontSize = size }
+            if let name = font["AXFontName"] as? String, !name.isEmpty { style.fontName = name }
+        }
+        if let raw = attributes[NSAttributedString.Key("AXForegroundColor")],
+           CFGetTypeID(raw as CFTypeRef) == CGColor.typeID,
+           let color = NSColor(cgColor: raw as! CGColor) {
+            style.foreground = color
+        }
+        return style
     }
 
     private static func focusedElement() -> AXUIElement? {
@@ -251,19 +434,18 @@ enum SelectionReader {
         return rect
     }
 
-    /// Accessibility frames are documented as screen coordinates, but some apps report a top-left origin.
-    /// Whichever form lands on a display is the one the panel uses.
-    private static func usableScreenRect(_ raw: CGRect) -> CGRect {
-        if onScreen(raw) { return raw }
-        let top = NSScreen.screens.map(\.frame.maxY).max() ?? raw.maxY
+    /// Accessibility bounds use Quartz global coordinates: origin at the top-left of the
+    /// main display, y growing down. AppKit windows use a bottom-left origin, so the rect is
+    /// flipped against the main display's height. A rect that lands on no display is dropped.
+    private static func screenRect(_ raw: CGRect) -> CGRect {
+        guard let main = NSScreen.screens.first else { return .zero }
         let flipped = CGRect(
             x: raw.origin.x,
-            y: top - raw.origin.y - raw.height,
+            y: main.frame.maxY - raw.origin.y - raw.height,
             width: raw.width,
             height: raw.height
         )
-        if onScreen(flipped) { return flipped }
-        return CGRect(origin: NSEvent.mouseLocation, size: .zero)
+        return onScreen(flipped) ? flipped : .zero
     }
 
     private static func onScreen(_ rect: CGRect) -> Bool {

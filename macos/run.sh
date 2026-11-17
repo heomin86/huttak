@@ -43,7 +43,12 @@ writeFileSync(
   )}\n`,
 );
 EOF
-codesign --force --sign - "$APP"
+# An ad-hoc signature's designated requirement is its cdhash, which changes on every build,
+# so macOS would forget the Accessibility grant each time. Pinning the requirement to the
+# bundle identifier keeps the grant across rebuilds.
+BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Contents/Info.plist")"
+codesign --force --sign - --identifier "$BUNDLE_ID" \
+  --requirements "=designated => identifier \"$BUNDLE_ID\"" "$APP"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 "$LSREGISTER" -f "$APP" >/dev/null 2>&1 || true
 echo "Huttak.app: $APP"

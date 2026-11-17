@@ -16,7 +16,7 @@ Huttak이 앞쪽 앱에서 선택한 글만 읽으려면 손쉬운 사용을 켜
 권한을 켜면 글을 드래그할 때 옆에 ㅎ이 뜨고, ⌃⌥S로도 번역합니다.
 """
 
-private enum HuttakLog {
+enum HuttakLog {
     static func write(_ message: String) {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/Huttak", isDirectory: true)
@@ -61,7 +61,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var offeredText = ""
     private var anchor = CGRect.zero
     private var coverRects: [CGRect] = []
-    private var coverFont: CGFloat = 0
+    private var coverStyle = CoverStyle()
+    private var coverBlocks: [SelectionBlock] = []
     private var config: LaunchConfig?
     private var trusted = false
     private var explainingPermission = false
@@ -235,7 +236,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         offeredText = selected.text
         anchor = selected.rect
         coverRects = selected.covers
-        coverFont = selected.fontSize
+        coverStyle = selected.style
+        coverBlocks = selected.blocks
         overlay.showOffer(near: selected.rect)
     }
 
@@ -250,7 +252,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             offeredText = selected.text
             anchor = selected.rect
             coverRects = selected.covers
-            coverFont = selected.fontSize
+            coverStyle = selected.style
+            coverBlocks = selected.blocks
         }
         let text = offeredText
         HuttakLog.write("translate chars=\(text.count)")
@@ -275,8 +278,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         offeredText = text
-        showPending()
+        let rects = coverRects
+        let base = coverStyle
         Task { @MainActor in
+            // Colors are read from the screen while the original is still visible.
+            self.coverStyle = await CoverSampler.sample(rects: rects, into: base)
+            self.showPending()
             do {
                 let health = try await translator.health()
                 if consentIfNeeded && !health.consent {
@@ -329,16 +336,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showPending() {
         if !coverRects.isEmpty {
             overlay.hideOffer()
-            cover.show(rects: coverRects, fontSize: coverFont, text: "…")
+            cover.show(rects: coverRects, style: coverStyle, text: "…")
             return
         }
         overlay.show(near: anchor, heading: "번역하는 중", body: "번역을 준비하고 있습니다.", busy: true, consent: false)
     }
 
+    /// Pairs each translated line with the block it came from. The translator keeps one line
+    /// per block and repeats the list marker, which the app already draws, so it is dropped.
+    private func blockTranslations(_ text: String) -> [(rects: [CGRect], text: String)]? {
+        guard coverBlocks.count > 1 else { return nil }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        guard lines.count == coverBlocks.count else { return nil }
+        return zip(coverBlocks, lines).map { block, line in
+            let marker = block.marker.trimmingCharacters(in: .whitespaces)
+            var body = line.trimmingCharacters(in: .whitespaces)
+            if !marker.isEmpty, body.hasPrefix(marker) {
+                body = String(body.dropFirst(marker.count)).trimmingCharacters(in: .whitespaces)
+            }
+            return (block.rects, body)
+        }
+    }
+
     private func showResult(_ text: String) {
         if !coverRects.isEmpty {
             overlay.hide()
-            cover.show(rects: coverRects, fontSize: coverFont, text: text)
+            if let placed = blockTranslations(text) {
+                cover.showBlocks(placed, style: coverStyle)
+            } else {
+                cover.show(rects: coverRects, style: coverStyle, text: text)
+            }
             return
         }
         overlay.show(
@@ -365,7 +392,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 if !self.coverRects.isEmpty {
                     if health.state == "downloading" || health.state == "loading" {
-                        self.cover.show(rects: self.coverRects, fontSize: self.coverFont, text: message)
+                        self.cover.show(rects: self.coverRects, style: self.coverStyle, text: message)
                     }
                     return
                 }
