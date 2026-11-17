@@ -4,7 +4,12 @@ import Carbon.HIToolbox
 
 struct SelectedText {
     let text: String
+    /// Union of the original glyphs, in screen coordinates. Zero when the app gave no bounds.
     let rect: CGRect
+    /// One rectangle per visual line of the selection. The cover paints their union.
+    let covers: [CGRect]
+    /// Source point size, or 0 when the app did not report a font.
+    let fontSize: CGFloat
 }
 
 enum SelectionReader {
@@ -38,16 +43,14 @@ enum SelectionReader {
         AXUIElementGetPid(element, &pid)
         if pid == getpid() { return nil }
         if stringAttribute(element, kAXSubroleAttribute) == kAXSecureTextFieldSubrole { return nil }
-        let raw = stringAttribute(element, kAXSelectedTextAttribute)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !raw.isEmpty else { return nil }
-        let rect: CGRect
-        if let bounds = boundsForSelectedRange(element) {
-            rect = usableScreenRect(bounds)
-        } else {
-            rect = CGRect(origin: NSEvent.mouseLocation, size: .zero)
-        }
-        return SelectedText(text: raw, rect: rect)
+        let raw = stringAttribute(element, kAXSelectedTextAttribute) ?? ""
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let range = selectedRange(element)
+        let covers = lineRects(element, text: raw, range: range)
+        let union = covers.dropFirst().reduce(covers.first ?? .zero) { $0.union($1) }
+        let font = range.flatMap { fontSize(element, range: $0) } ?? 0
+        return SelectedText(text: trimmed, rect: union, covers: covers, fontSize: font)
     }
 
     private static func secureFocused() -> Bool {
@@ -97,7 +100,74 @@ enum SelectionReader {
             }
         }
         guard let copied, !copied.isEmpty else { return nil }
-        return SelectedText(text: copied, rect: CGRect(origin: NSEvent.mouseLocation, size: .zero))
+        return SelectedText(
+            text: copied,
+            rect: CGRect(origin: NSEvent.mouseLocation, size: .zero),
+            covers: [],
+            fontSize: 0
+        )
+    }
+
+    /// Line rectangles for the selected range. A multi-line selection is several bounds,
+    /// matching the lines the extension would replace inside one block.
+    private static func lineRects(_ element: AXUIElement, text: String, range: CFRange?) -> [CGRect] {
+        guard let range else {
+            return boundsForSelectedRange(element).map { [usableScreenRect($0)] } ?? []
+        }
+        let ns = text as NSString
+        var rects: [CGRect] = []
+        var start = 0
+        while start < ns.length {
+            let line = ns.lineRange(for: NSRange(location: start, length: 0))
+            if line.length == 0 { break }
+            var length = line.length
+            let chunk = ns.substring(with: line)
+            if chunk.hasSuffix("\r\n") {
+                length -= 2
+            } else if chunk.hasSuffix("\n") || chunk.hasSuffix("\r") {
+                length -= 1
+            }
+            if length > 0 {
+                let piece = CFRange(location: range.location + line.location, length: length)
+                if let raw = bounds(element, range: piece) {
+                    let screen = usableScreenRect(raw)
+                    if screen.width > 1, screen.height > 1 {
+                        rects.append(screen)
+                    }
+                }
+            }
+            start = line.location + line.length
+        }
+        if !rects.isEmpty { return rects }
+        if let whole = bounds(element, range: range) {
+            let screen = usableScreenRect(whole)
+            if screen.width > 1, screen.height > 1 { return [screen] }
+        }
+        return boundsForSelectedRange(element).map { [usableScreenRect($0)] } ?? []
+    }
+
+    private static func selectedRange(_ element: AXUIElement) -> CFRange? {
+        var raw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &raw) == .success,
+              let raw
+        else { return nil }
+        return cfRange(raw)
+    }
+
+    private static func fontSize(_ element: AXUIElement, range: CFRange) -> CGFloat? {
+        var stored = range
+        guard let rangeValue = AXValueCreate(.cfRange, &stored) else { return nil }
+        var raw: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            element,
+            kAXAttributedStringForRangeParameterizedAttribute as CFString,
+            rangeValue,
+            &raw
+        ) == .success, let raw else { return nil }
+        guard let attributed = raw as? NSAttributedString, attributed.length > 0 else { return nil }
+        let font = attributed.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        guard let size = font?.pointSize, size > 0 else { return nil }
+        return size
     }
 
     private static func focusedElement() -> AXUIElement? {
@@ -129,6 +199,19 @@ enum SelectionReader {
         if let text = raw as? String { return text }
         if let text = raw as? NSAttributedString { return text.string }
         return nil
+    }
+
+    private static func bounds(_ element: AXUIElement, range: CFRange) -> CGRect? {
+        var stored = range
+        guard let rangeValue = AXValueCreate(.cfRange, &stored) else { return nil }
+        var rawBounds: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            element,
+            kAXBoundsForRangeParameterizedAttribute as CFString,
+            rangeValue,
+            &rawBounds
+        ) == .success, let rawBounds else { return nil }
+        return cgRect(rawBounds)
     }
 
     private static func boundsForSelectedRange(_ element: AXUIElement) -> CGRect? {
