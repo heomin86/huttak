@@ -9,7 +9,7 @@ import {
   readCompletionStream,
 } from '../macos/translator/completion';
 import { selectionDirection } from '../macos/translator/direction';
-import { translateSelection } from '../macos/translator/translate';
+import { splitLines, translateSelection } from '../macos/translator/translate';
 
 class RecordingRuntime implements LlamaRuntime {
   readonly backend = 'cpu-wasm' as const;
@@ -147,5 +147,29 @@ describe('translateSelection', () => {
     await expect(translateSelection(engine, '   ', new AbortController().signal)).rejects.toSatisfy(
       (error: unknown) => isEngineError(error) && error.code === 'invalid-input',
     );
+  });
+
+  it('translates each paragraph and list item on its own line and keeps the numbers', async () => {
+    const runtime = new RecordingRuntime('번역');
+    const engine = new InBrowserEngine(runtime);
+    const result = await translateSelection(
+      engine,
+      'Here is my proposal.\n1. Keep my scripts in a repository.\n2. Move rendering to the cloud.\n\nPick one.',
+      new AbortController().signal,
+    );
+    expect(result.text).toBe('번역\n1. 번역\n2. 번역\n\n번역');
+    const prompts = runtime.prompts.join('\n');
+    expect(prompts).toContain('Keep my scripts in a repository.');
+    expect(prompts).not.toContain('1. Keep');
+  });
+});
+
+describe('splitLines', () => {
+  it('separates list numbers and bullets from the text', () => {
+    expect(splitLines('1. One\n- Two\n  plain ')).toEqual([
+      { marker: '1. ', body: 'One' },
+      { marker: '- ', body: 'Two' },
+      { marker: '', body: 'plain' },
+    ]);
   });
 });

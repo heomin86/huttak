@@ -120,8 +120,11 @@ final class TranslatorService {
         let pipe = Pipe()
         listing.standardOutput = pipe
         do { try listing.run() } catch { return }
+        // Drain stdout before waiting: a long process list can fill the pipe and
+        // leave ps waiting for a reader while the app waits for ps to exit.
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         listing.waitUntilExit()
-        let text = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let text = String(data: data, encoding: .utf8) ?? ""
         for line in text.split(separator: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard let space = trimmed.firstIndex(of: " ") else { continue }
