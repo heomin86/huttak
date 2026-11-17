@@ -48,6 +48,7 @@ private func hotkeyPressed(
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let overlay = TranslationOverlay()
+    private let cover = InPlaceCover()
     private let translator = TranslatorService()
     private var statusItem: NSStatusItem?
     private var hotKey: EventHotKeyRef?
@@ -59,6 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pollTimer: Timer?
     private var offeredText = ""
     private var anchor = CGRect.zero
+    private var coverRects: [CGRect] = []
+    private var coverFont: CGFloat = 0
     private var config: LaunchConfig?
     private var trusted = false
     private var explainingPermission = false
@@ -182,7 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 overlay.show(
                     near: noticeAnchor(),
                     heading: "권한을 확인했습니다",
-                    body: "글을 드래그하면 옆에 ㅎ이 뜹니다. 단축키는 ⌃⌥S입니다.",
+                    body: "글을 드래그한 뒤 ㅎ 또는 ⌃⌥S를 누르면, 번역이 원래 글자 위를 덮습니다.",
                     busy: false,
                     consent: false,
                     activate: true
@@ -202,7 +205,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func scheduleOffer(_ event: NSEvent) {
-        if overlay.contains(event.locationInWindow) { return }
+        if event.keyCode == 53 {
+            cover.hide()
+            return
+        }
+        if cover.contains(event.locationInWindow) || overlay.contains(event.locationInWindow) { return }
+        if cover.isVisible, event.type == .leftMouseUp {
+            cover.hide()
+        }
         offerTimer?.invalidate()
         offerTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self] _ in
             self?.offerSelection()
@@ -215,12 +225,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !overlay.panelIsVisible { overlay.hideOffer() }
             return
         }
-        if selected.text == offeredText && overlay.panelIsVisible {
+        if selected.text == offeredText && (overlay.panelIsVisible || cover.isVisible) {
             overlay.hideOffer()
             return
         }
+        if selected.text != offeredText {
+            cover.hide()
+        }
         offeredText = selected.text
         anchor = selected.rect
+        coverRects = selected.covers
+        coverFont = selected.fontSize
         overlay.showOffer(near: selected.rect)
     }
 
@@ -234,6 +249,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let selected = SelectionReader.readForCommand() {
             offeredText = selected.text
             anchor = selected.rect
+            coverRects = selected.covers
+            coverFont = selected.fontSize
         }
         let text = offeredText
         HuttakLog.write("translate chars=\(text.count)")
@@ -258,13 +275,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         offeredText = text
-        overlay.show(near: anchor, heading: "번역하는 중", body: "번역을 준비하고 있습니다.", busy: true, consent: false)
+        showPending()
         Task { @MainActor in
             do {
                 let health = try await translator.health()
                 if consentIfNeeded && !health.consent {
+                    cover.hide()
                     overlay.show(
-                        near: anchor == .zero ? noticeAnchor() : anchor,
+                        near: noticeAnchor(),
                         heading: "이 Mac 안에서 번역",
                         body: consentCopy,
                         busy: false,
@@ -275,8 +293,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 runTranslation(consent: health.consent)
             } catch let TranslatorClientError.failed(message) {
+                cover.hide()
                 overlay.show(near: anchor, heading: "번역하지 못했습니다", body: message, busy: true, consent: false)
             } catch {
+                cover.hide()
                 overlay.show(near: anchor, heading: "번역하지 못했습니다", body: error.localizedDescription, busy: true, consent: false)
             }
         }
@@ -284,28 +304,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func runTranslation(consent: Bool) {
         let text = offeredText
-        overlay.show(near: anchor, heading: "번역하는 중", body: "번역 모델을 준비하고 있습니다.", busy: true, consent: false)
+        showPending()
         startPolling()
         Task { @MainActor in
             do {
                 let result = try await translator.translate(text: text, consent: consent)
                 stopPolling()
                 let body = result.text.isEmpty ? "번역 결과가 비어 있습니다." : result.text
-                overlay.show(
-                    near: anchor,
-                    heading: directionHeading(source: result.source, target: result.target),
-                    body: body,
-                    busy: false,
-                    consent: false
-                )
+                showResult(body)
             } catch let TranslatorClientError.failed(message) {
                 stopPolling()
+                cover.hide()
                 overlay.show(near: anchor, heading: "번역하지 못했습니다", body: message, busy: true, consent: false)
             } catch {
                 stopPolling()
+                cover.hide()
                 overlay.show(near: anchor, heading: "번역하지 못했습니다", body: error.localizedDescription, busy: true, consent: false)
             }
         }
+    }
+
+    /// Covers the original glyphs while the model runs. A side card is only used when
+    /// the front app did not report selection bounds.
+    private func showPending() {
+        if !coverRects.isEmpty {
+            overlay.hideOffer()
+            cover.show(rects: coverRects, fontSize: coverFont, text: "…")
+            return
+        }
+        overlay.show(near: anchor, heading: "번역하는 중", body: "번역을 준비하고 있습니다.", busy: true, consent: false)
+    }
+
+    private func showResult(_ text: String) {
+        if !coverRects.isEmpty {
+            overlay.hide()
+            cover.show(rects: coverRects, fontSize: coverFont, text: text)
+            return
+        }
+        overlay.show(
+            near: anchor,
+            heading: "번역",
+            body: text,
+            busy: false,
+            consent: false
+        )
     }
 
     private func startPolling() {
@@ -320,6 +362,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if health.state == "downloading", health.total > 0 {
                     let percent = Int((Double(health.received) / Double(health.total) * 100).rounded())
                     message = "\(health.message) \(percent)%"
+                }
+                if !self.coverRects.isEmpty {
+                    if health.state == "downloading" || health.state == "loading" {
+                        self.cover.show(rects: self.coverRects, fontSize: self.coverFont, text: message)
+                    }
+                    return
                 }
                 self.overlay.show(near: self.anchor, heading: "번역하는 중", body: message, busy: true, consent: false)
             }
