@@ -11,7 +11,7 @@ struct SelectedText {
     /// Font and colors the app reported for the original. Colors from the screen are added later.
     let style: CoverStyle
     /// Paragraphs and list items of a web selection, in order. Empty for plain text views.
-    /// When there are several, `text` holds one line per block.
+    /// When present, `text` holds one line per block.
     var blocks: [SelectionBlock] = []
 }
 
@@ -30,6 +30,9 @@ enum SelectionReader {
     /// Selection exposed by the accessibility tree. Safe to call while the pointer is moving.
     static func read() -> SelectedText? {
         guard AXIsProcessTrusted() else { return nil }
+        // A hung app must not freeze the menu-bar app for the system's default 6 seconds.
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.5)
+        if secureFocused() { return nil }
         if let app = focusedApplication() { enableWebAccessibility(app) }
         if let element = focusedElement(), let selected = selection(in: element) { return selected }
         guard let app = focusedApplication() else { return nil }
@@ -99,8 +102,8 @@ enum SelectionReader {
         let anchor = usable.isEmpty ? CGRect(origin: NSEvent.mouseLocation, size: .zero) : union
         // Line breaks between blocks are what keep paragraphs and list items apart in the
         // translation; web views report the selection as one run-on string.
-        let joined = blocks.count > 1 ? blocks.map { $0.marker + $0.text }.joined(separator: "\n") : text
-        return SelectedText(text: joined, rect: anchor, covers: usable, style: style, blocks: blocks.count > 1 ? blocks : [])
+        let joined = blocks.isEmpty ? text.replacingOccurrences(of: "\u{FFFC}", with: "") : blocks.map { $0.marker + $0.text }.joined(separator: "\n")
+        return SelectedText(text: joined, rect: anchor, covers: usable, style: style, blocks: blocks)
     }
 
     // MARK: Web views (Chrome, Safari, Electron)
@@ -155,9 +158,16 @@ enum SelectionReader {
         guard let raw = parameterized(node, "AXBoundsForTextMarkerRange", markers).flatMap(cgRect),
               raw.width > 1, raw.height > 1
         else { return ([], []) }
-        let wanted = normalized(text)
-        var blocks: [(owner: AXUIElement, marker: String, text: String, rects: [CGRect])] = []
-        var partial: CGRect?
+        struct Run {
+            let owner: AXUIElement
+            let marker: String
+            let value: String
+            let frame: CGRect
+            /// A line break sits before this run inside the same paragraph.
+            let breakBefore: Bool
+        }
+        var runs: [Run] = []
+        var pendingBreak = false
         var budget = 3000
         func visit(_ element: AXUIElement, depth: Int, owner: AXUIElement, marker: String) {
             guard budget > 0, depth < 40 else { return }
@@ -167,24 +177,19 @@ enum SelectionReader {
             let role = stringAttribute(element, kAXRoleAttribute) ?? ""
             if role == kAXStaticTextRole {
                 let value = stringAttribute(element, kAXValueAttribute) ?? ""
-                let compact = normalized(value)
-                guard let frame, !compact.isEmpty, frame.width > 1, frame.height > 1 else { return }
-                if wanted.contains(compact) {
-                    if let last = blocks.last, CFEqual(last.owner, owner) {
-                        blocks[blocks.count - 1].text += value
-                        blocks[blocks.count - 1].rects.append(frame)
-                    } else {
-                        blocks.append((owner, marker, value, [frame]))
-                    }
-                } else if compact.contains(wanted) {
-                    partial = frame
+                if normalized(value).isEmpty {
+                    if value.contains("\n") { pendingBreak = true }
+                    return
                 }
+                guard let frame, frame.width > 1, frame.height > 1 else { return }
+                runs.append(Run(owner: owner, marker: marker, value: value, frame: frame, breakBefore: pendingBreak))
+                pendingBreak = false
                 return
             }
             // A group that is only styling (bold, italic, a link) stays inside its paragraph.
             let subrole = stringAttribute(element, kAXSubroleAttribute) ?? ""
             let inline = subrole.hasSuffix("StyleGroup") || role == "AXLink"
-            let isBlock = role == kAXGroupRole && !inline && !CFEqual(element, node)
+            let isBlock = role == kAXGroupRole && !inline
             let kids = children(of: element) ?? []
             var childMarker = isBlock ? "" : marker
             if isBlock, let first = kids.first, stringAttribute(first, kAXRoleAttribute) == "AXListMarker" {
@@ -194,23 +199,61 @@ enum SelectionReader {
                 visit(child, depth: depth + 1, owner: isBlock ? element : owner, marker: childMarker)
             }
         }
-        visit(node, depth: 0, owner: node, marker: "")
-        let converted: [SelectionBlock] = blocks.compactMap { block in
+        // The focused element can be one message while the selection spans several.
+        let root = webAreaAncestor(of: node) ?? node
+        visit(root, depth: 0, owner: root, marker: "")
+
+        guard let touched = SelectionRuns.touched(selection: text, runs: runs.map(\.value)) else {
+            return ([], [])
+        }
+        // A selection inside one run keeps its own bounds, so the rest of the paragraph stays.
+        if touched.count == 1, normalized(runs[touched[0]].value) != normalized(text) {
+            let run = runs[touched[0]]
+            if normalized(run.value).contains(normalized(text)), raw.height <= run.frame.height + 4 {
+                let screen = screenRect(raw)
+                return (screen.width > 1 && screen.height > 1 ? [screen] : [], [])
+            }
+        }
+        // Blocks are whole: a paragraph that is partly selected is translated whole, because
+        // its cover hides all of it.
+        var included = Set(touched)
+        var first = touched[0]
+        while first > 0, CFEqual(runs[first - 1].owner, runs[first].owner), !runs[first].breakBefore {
+            first -= 1
+            included.insert(first)
+        }
+        var last = touched[touched.count - 1]
+        while last + 1 < runs.count, CFEqual(runs[last + 1].owner, runs[last].owner), !runs[last + 1].breakBefore {
+            last += 1
+            included.insert(last)
+        }
+        var grouped: [(owner: AXUIElement, marker: String, text: String, rects: [CGRect])] = []
+        for run in included.sorted().map({ runs[$0] }) {
+            if let last = grouped.last, CFEqual(last.owner, run.owner), !run.breakBefore {
+                grouped[grouped.count - 1].text += run.value
+                grouped[grouped.count - 1].rects.append(run.frame)
+            } else {
+                let continues = grouped.last.map { CFEqual($0.owner, run.owner) } ?? false
+                grouped.append((run.owner, continues ? "" : run.marker, run.value, [run.frame]))
+            }
+        }
+        let converted: [SelectionBlock] = grouped.compactMap { block in
             let rects = block.rects.map(screenRect).filter { $0.width > 1 && $0.height > 1 }
-            let body = block.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let body = normalized(block.text)
             guard !rects.isEmpty, !body.isEmpty else { return nil }
             return SelectionBlock(marker: block.marker, text: body, rects: rects)
         }
-        if !converted.isEmpty {
-            return (converted.flatMap(\.rects), converted)
+        return (converted.flatMap(\.rects), converted)
+    }
+
+    private static func webAreaAncestor(of element: AXUIElement) -> AXUIElement? {
+        var current: AXUIElement? = element
+        for _ in 0..<40 {
+            guard let node = current else { return nil }
+            if stringAttribute(node, kAXRoleAttribute) == "AXWebArea" { return node }
+            current = elementAttribute(node, kAXParentAttribute)
         }
-        // A selection inside one run: the marker bounds are right unless they spill past it.
-        if let partial {
-            let clipped = raw.height <= partial.height + 4 ? raw : partial
-            let screen = screenRect(clipped)
-            return (screen.width > 1 && screen.height > 1 ? [screen] : [], [])
-        }
-        return ([], [])
+        return nil
     }
 
     private static func normalized(_ text: String) -> String {
@@ -283,7 +326,7 @@ enum SelectionReader {
         let copied = pasteboard.changeCount == before
             ? nil
             : pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !saved.isEmpty {
+        if pasteboard.changeCount != before {
             pasteboard.clearContents()
             for (type, data) in saved {
                 pasteboard.setData(data, forType: type)

@@ -9,7 +9,7 @@ import {
   readCompletionStream,
 } from '../macos/translator/completion';
 import { selectionDirection } from '../macos/translator/direction';
-import { splitLines, translateSelection } from '../macos/translator/translate';
+import { splitLines, translateSelection, unwrapLines } from '../macos/translator/translate';
 
 class RecordingRuntime implements LlamaRuntime {
   readonly backend = 'cpu-wasm' as const;
@@ -171,5 +171,58 @@ describe('splitLines', () => {
       { marker: '- ', body: 'Two' },
       { marker: '', body: 'plain' },
     ]);
+  });
+});
+
+describe('unwrapLines', () => {
+  it('joins a sentence wrapped by a PDF or mail', () => {
+    expect(unwrapLines('The meeting starts at\nnine in the morning.\nBring a laptop.')).toBe(
+      'The meeting starts at nine in the morning.\nBring a laptop.',
+    );
+  });
+
+  it('leaves paragraphs, lists, headings, and Korean lines apart', () => {
+    for (const text of [
+      'One.\ntwo.',
+      'Title\nBody here.',
+      'a\n\nb',
+      '- one\n- two',
+      '첫 줄\n둘째 줄',
+    ]) {
+      expect(unwrapLines(text)).toBe(text);
+    }
+  });
+
+  it('never loses a word on random line breaks', () => {
+    const words = ['alpha', 'Beta', 'gamma.', '1.', 'delta', '한글', 'x?', '-'];
+    let seed = 7;
+    const next = (limit: number): number => {
+      seed = (seed * 48271) % 2147483647;
+      return seed % limit;
+    };
+    for (let round = 0; round < 2000; round += 1) {
+      const text = Array.from({ length: 1 + next(30) }, () => words[next(words.length)])
+        .map((word) => `${word ?? ''}${next(3) === 0 ? '\n' : ' '}`)
+        .join('')
+        .trim();
+      expect(unwrapLines(text).split(/\s+/u)).toEqual(text.split(/\s+/u));
+    }
+  });
+});
+
+describe('translateSelection line handling', () => {
+  it('keeps every line apart when the lines are blocks on screen', async () => {
+    const runtime = new RecordingRuntime('번역');
+    const result = await translateSelection(
+      new InBrowserEngine(runtime),
+      'First block without a stop\nsecond block',
+      new AbortController().signal,
+      { keepLines: true },
+    );
+    expect(result.text.split('\n')).toHaveLength(2);
+  });
+
+  it('does not read a capital initial as a list marker', () => {
+    expect(splitLines('A. Smith arrived.')).toEqual([{ marker: '', body: 'A. Smith arrived.' }]);
   });
 });

@@ -101,8 +101,9 @@ final class TranslatorService {
         return try JSONDecoder().decode(TranslatorHealth.self, from: data)
     }
 
-    func translate(text: String, consent: Bool) async throws -> TranslatorPayload {
-        let body = try JSONSerialization.data(withJSONObject: ["text": text, "consent": consent])
+    /// `keepLines` is set when each line is a block on screen and must come back as one line.
+    func translate(text: String, consent: Bool, keepLines: Bool) async throws -> TranslatorPayload {
+        let body = try JSONSerialization.data(withJSONObject: ["text": text, "consent": consent, "keepLines": keepLines])
         let data = try await request(path: "/v1/translate", method: "POST", body: body)
         return try JSONDecoder().decode(TranslatorPayload.self, from: data)
     }
