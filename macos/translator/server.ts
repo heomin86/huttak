@@ -75,6 +75,7 @@ async function engineReady(signal: AbortSignal): Promise<InBrowserEngine> {
 async function handleTranslate(
   text: string,
   consent: boolean,
+  keepLines: boolean,
   signal: AbortSignal,
 ): Promise<unknown> {
   if (consent) await rememberModelConsent();
@@ -91,7 +92,7 @@ async function handleTranslate(
   try {
     const ready = await engineReady(controller.signal);
     setHealth('translating', '번역하는 중');
-    const result = await translateSelection(ready, text, controller.signal);
+    const result = await translateSelection(ready, text, controller.signal, { keepLines });
     setHealth('ready', '번역할 수 있습니다');
     return result;
   } finally {
@@ -136,9 +137,9 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   }
   if (req.method === 'POST' && url.pathname === '/v1/translate') {
     const raw = await readBody(req);
-    let parsed: { text?: unknown; consent?: unknown };
+    let parsed: { text?: unknown; consent?: unknown; keepLines?: unknown };
     try {
-      parsed = JSON.parse(raw) as { text?: unknown; consent?: unknown };
+      parsed = JSON.parse(raw) as { text?: unknown; consent?: unknown; keepLines?: unknown };
     } catch {
       throw new EngineError('invalid-input', 'The request was not JSON.');
     }
@@ -149,7 +150,12 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     req.on('close', () => {
       if (!res.writableEnded) controller.abort();
     });
-    const result = await handleTranslate(parsed.text, parsed.consent === true, controller.signal);
+    const result = await handleTranslate(
+      parsed.text,
+      parsed.consent === true,
+      parsed.keepLines === true,
+      controller.signal,
+    );
     send(res, 200, result);
     return;
   }

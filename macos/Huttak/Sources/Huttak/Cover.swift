@@ -72,14 +72,40 @@ final class InPlaceCover: NSObject {
         field.cell?.wraps = true
         // Top-aligned like the original: the label is only as tall as its text.
         let needed = ceil(field.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: box.width, height: .greatestFiniteMagnitude)).height ?? box.height)
-        let height = min(box.height, needed + 4)
-        field.frame = NSRect(x: box.minX, y: box.maxY - height, width: box.width, height: height)
-        let container = NSView(frame: NSRect(origin: .zero, size: frame.size))
+        // Even the smallest size may not fit a very narrow original. The patch then grows
+        // downward so no words are lost.
+        let extra = max(0, needed + 2 - box.height)
+        if extra > 0 {
+            panel.setFrame(NSRect(x: frame.minX, y: frame.minY - extra, width: frame.width, height: frame.height + extra), display: false)
+        }
+        let grownBox = NSRect(x: box.minX, y: box.minY, width: box.width, height: box.height + extra)
+        let height = min(grownBox.height, needed + 4)
+        field.frame = NSRect(x: grownBox.minX, y: grownBox.maxY - height, width: grownBox.width, height: height)
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: frame.width, height: frame.height + extra))
         container.wantsLayer = true
         container.layer?.backgroundColor = style.background.cgColor
         container.addSubview(field)
         panel.contentView = container
         return panel
+    }
+
+    /// The app of the topmost normal window at a point in AppKit coordinates, ignoring Huttak.
+    static func windowOwner(at point: CGPoint) -> pid_t? {
+        guard let main = NSScreen.screens.first,
+              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]]
+        else { return nil }
+        let quartz = CGPoint(x: point.x, y: main.frame.maxY - point.y)
+        for window in windows {
+            guard (window[kCGWindowLayer as String] as? Int) == 0,
+                  let owner = window[kCGWindowOwnerPID as String] as? pid_t, owner != getpid(),
+                  let raw = window[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: raw),
+                  bounds.contains(quartz)
+            else { continue }
+            return owner
+        }
+        return nil
     }
 
     func hide() {
