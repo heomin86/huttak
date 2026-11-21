@@ -55,6 +55,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkeyHandler: EventHandlerRef?
     private var mouseMonitor: Any?
     private var keyMonitor: Any?
+    private var scrollMonitor: Any?
+    private var activationObserver: Any?
+    /// Bumped by every new translation and by a dismissal. A result for an older value is dropped.
+    private var requestID = 0
+    /// The app whose text is under the cover.
+    private var coverOwner: pid_t?
     private var offerTimer: Timer?
     private var trustTimer: Timer?
     private var pollTimer: Timer?
@@ -203,16 +209,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyUp]) { [weak self] event in
             self?.scheduleOffer(event)
         }
+        scrollMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.scrollWheel]) { [weak self] _ in
+            guard let self, self.isCovering else { return }
+            // Scrolling some other window leaves the original where it was.
+            if InPlaceCover.windowOwner(at: NSEvent.mouseLocation) == self.coverOwner {
+                self.originalMoved(because: "scroll")
+            }
+        }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard let self, self.isCovering, app?.processIdentifier != getpid() else { return }
+            // Another app coming forward matters only if it now sits on the original.
+            let middle = CGPoint(x: self.anchor.midX, y: self.anchor.midY)
+            if InPlaceCover.windowOwner(at: middle) != self.coverOwner {
+                self.originalMoved(because: "app \(app?.localizedName ?? "?")")
+            }
+        }
+    }
+
+    /// The original is no longer where the cover was placed. A translation still running
+    /// finishes in the side panel, because its rectangles are stale.
+    private var isCovering: Bool { cover.isVisible }
+
+    private func originalMoved(because reason: String) {
+        HuttakLog.write("cover removed: \(reason)")
+        let wasCovering = cover.isVisible
+        cover.hide()
+        coverRects = []
+        coverBlocks = []
+        if !overlay.panelIsVisible { overlay.hideOffer() }
+        if wasCovering, pollTimer != nil {
+            overlay.show(near: anchor, heading: "번역하는 중", body: "번역을 준비하고 있습니다.", busy: true, consent: false)
+        }
+    }
+
+    /// Esc: the reader wants the original back, including from a translation still running.
+    private func dismissTranslation() {
+        requestID += 1
+        stopPolling()
+        cover.hide()
+        overlay.hide()
     }
 
     private func scheduleOffer(_ event: NSEvent) {
         if event.keyCode == 53 {
-            cover.hide()
+            if cover.isVisible || pollTimer != nil || overlay.panelIsVisible { dismissTranslation() }
+            return
+        }
+        // Plain typing is not a selection. Only Shift or ⌘ combinations can select by keyboard,
+        // so other apps' fields are not read on every key.
+        if event.type == .keyUp, event.modifierFlags.isDisjoint(with: [.shift, .command]) {
+            if !overlay.panelIsVisible { overlay.hideOffer() }
             return
         }
         if cover.contains(event.locationInWindow) || overlay.contains(event.locationInWindow) { return }
         if cover.isVisible, event.type == .leftMouseUp {
             cover.hide()
+            requestID += 1
+            stopPolling()
         }
         offerTimer?.invalidate()
         offerTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self] _ in
@@ -248,6 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             promptForTrust()
             return
         }
+        coverOwner = NSWorkspace.shared.frontmostApplication?.processIdentifier
         if let selected = SelectionReader.readForCommand() {
             offeredText = selected.text
             anchor = selected.rect
@@ -278,14 +337,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         offeredText = text
+        requestID += 1
+        let request = requestID
         let rects = coverRects
         let base = coverStyle
         Task { @MainActor in
             // Colors are read from the screen while the original is still visible.
-            self.coverStyle = await CoverSampler.sample(rects: rects, into: base)
+            let sampled = await CoverSampler.sample(rects: rects, into: base)
+            guard request == self.requestID else { return }
+            self.coverStyle = sampled
             self.showPending()
             do {
                 let health = try await translator.health()
+                guard request == self.requestID else { return }
                 if consentIfNeeded && !health.consent {
                     cover.hide()
                     overlay.show(
@@ -299,34 +363,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
                 runTranslation(consent: health.consent)
-            } catch let TranslatorClientError.failed(message) {
-                cover.hide()
-                overlay.show(near: anchor, heading: "번역하지 못했습니다", body: message, busy: true, consent: false)
             } catch {
-                cover.hide()
-                overlay.show(near: anchor, heading: "번역하지 못했습니다", body: error.localizedDescription, busy: true, consent: false)
+                showFailure(error, request: request)
             }
         }
     }
 
+    private func showFailure(_ error: Error, request: Int) {
+        guard request == requestID else { return }
+        stopPolling()
+        cover.hide()
+        var message = error.localizedDescription
+        if case let TranslatorClientError.failed(detail) = error { message = detail }
+        overlay.show(near: anchor, heading: "번역하지 못했습니다", body: message, busy: true, consent: false)
+    }
+
     private func runTranslation(consent: Bool) {
         let text = offeredText
+        requestID += 1
+        let request = requestID
+        let keepLines = !coverBlocks.isEmpty
         showPending()
         startPolling()
         Task { @MainActor in
             do {
-                let result = try await translator.translate(text: text, consent: consent)
+                let result = try await translator.translate(text: text, consent: consent, keepLines: keepLines)
+                guard request == self.requestID else { return }
                 stopPolling()
                 let body = result.text.isEmpty ? "번역 결과가 비어 있습니다." : result.text
                 showResult(body)
-            } catch let TranslatorClientError.failed(message) {
-                stopPolling()
-                cover.hide()
-                overlay.show(near: anchor, heading: "번역하지 못했습니다", body: message, busy: true, consent: false)
             } catch {
-                stopPolling()
-                cover.hide()
-                overlay.show(near: anchor, heading: "번역하지 못했습니다", body: error.localizedDescription, busy: true, consent: false)
+                showFailure(error, request: request)
             }
         }
     }
@@ -336,7 +403,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showPending() {
         if !coverRects.isEmpty {
             overlay.hideOffer()
-            cover.show(rects: coverRects, style: coverStyle, text: "…")
+            if coverBlocks.isEmpty {
+                cover.show(rects: coverRects, style: coverStyle, text: "…")
+            } else {
+                cover.showBlocks(coverBlocks.map { ($0.rects, "…") }, style: coverStyle)
+            }
             return
         }
         overlay.show(near: anchor, heading: "번역하는 중", body: "번역을 준비하고 있습니다.", busy: true, consent: false)
@@ -345,7 +416,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Pairs each translated line with the block it came from. The translator keeps one line
     /// per block and repeats the list marker, which the app already draws, so it is dropped.
     private func blockTranslations(_ text: String) -> [(rects: [CGRect], text: String)]? {
-        guard coverBlocks.count > 1 else { return nil }
+        guard !coverBlocks.isEmpty else { return nil }
         let lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
         guard lines.count == coverBlocks.count else { return nil }
         return zip(coverBlocks, lines).map { block, line in
@@ -391,8 +462,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     message = "\(health.message) \(percent)%"
                 }
                 if !self.coverRects.isEmpty {
-                    if health.state == "downloading" || health.state == "loading" {
-                        self.cover.show(rects: self.coverRects, style: self.coverStyle, text: message)
+                    if self.cover.isVisible, health.state == "downloading" || health.state == "loading" {
+                        if self.coverBlocks.isEmpty {
+                            self.cover.show(rects: self.coverRects, style: self.coverStyle, text: message)
+                        } else {
+                            // The status goes in the first block; the layout stays as it was.
+                            let placed = self.coverBlocks.enumerated().map { index, block in
+                                (rects: block.rects, text: index == 0 ? message : "…")
+                            }
+                            self.cover.showBlocks(placed, style: self.coverStyle)
+                        }
                     }
                     return
                 }

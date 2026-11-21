@@ -20,6 +20,7 @@ export async function translateSelection(
   engine: IdentifiedEngine,
   text: string,
   signal: AbortSignal,
+  options: { keepLines?: boolean } = {},
 ): Promise<SelectionTranslation> {
   const normalized = normalizeTypedInput(text);
   if (normalized.length === 0) {
@@ -30,7 +31,7 @@ export async function translateSelection(
   }
 
   const direction = selectionDirection(normalized);
-  const lines = splitLines(normalized);
+  const lines = splitLines(options.keepLines === true ? normalized : unwrapLines(normalized));
   const segments = lines.flatMap((line, index) =>
     line.body.length > 0 ? [{ id: `line-${String(index)}`, text: line.body }] : [],
   );
@@ -47,7 +48,9 @@ export async function translateSelection(
 
   const translated = lines
     .map((line, index) =>
-      line.body.length > 0 ? `${line.marker}${finals.get(`line-${String(index)}`) ?? ''}` : '',
+      line.body.length > 0
+        ? `${line.marker}${finals.get(`line-${String(index)}`) || line.body}`
+        : '',
     )
     .join('\n')
     .replace(/\n{3,}/gu, '\n\n')
@@ -67,7 +70,7 @@ interface SelectionLine {
   body: string;
 }
 
-const LIST_MARKER = /^((?:[-*•‣◦·]|\d{1,3}[.)]|[A-Za-z][.)])\s+)/u;
+const LIST_MARKER = /^((?:[-*•‣◦·]|\d{1,3}[.)])\s+)/u;
 
 /**
  * Paragraphs and list items are translated one by one. Sent as one string, the model joins
@@ -79,6 +82,33 @@ export function splitLines(text: string): SelectionLine[] {
     const marker = LIST_MARKER.exec(line)?.[1] ?? '';
     return { marker, body: line.slice(marker.length).trim() };
   });
+}
+
+const SENTENCE_END = /[.!?:;…。！？"”’)\]]$/u;
+
+/**
+ * Joins lines that a PDF, mail, or terminal wrapped in the middle of a sentence, so the
+ * model sees the whole sentence. Only a clear case is joined: no closing punctuation, and
+ * the next line continues in lowercase.
+ */
+export function unwrapLines(text: string): string {
+  const out: string[] = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    const previous = out.at(-1);
+    if (
+      previous !== undefined &&
+      previous.length > 0 &&
+      !SENTENCE_END.test(previous) &&
+      /^\p{Ll}/u.test(line) &&
+      !LIST_MARKER.test(line)
+    ) {
+      out[out.length - 1] = `${previous} ${line}`;
+    } else {
+      out.push(line);
+    }
+  }
+  return out.join('\n');
 }
 
 export { InBrowserEngine };
