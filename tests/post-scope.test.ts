@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { uiShadow } from '@/dom/overlay';
 import { collectDocumentPostScopes, detectPostScopes, listPostBlocks } from '@/dom/post-scope';
 import { PageSession, type PageEngine, type SessionPreferences } from '@/dom/session';
+import { resolvePageTarget } from '@/shared/languages';
 
 const labels = {
   original: '원문',
@@ -564,5 +565,111 @@ Second tweet paragraph.</span></div>
     expect(session.state().scope).toBe('page');
     expect(session.state().postNotFound).toBe(false);
     expect(document.getElementById('foot')?.textContent).toContain('번역:All rights reserved');
+  });
+
+  it('preserves the pre-translation post source language after replace-mode translation', async () => {
+    // 1) English article translated into pure Korean text in replace mode.
+    document.documentElement.lang = 'en';
+    document.body.innerHTML = `
+      <main>
+        <article>
+          <h1>Browser performance notes</h1>
+          <p id="p1">Local translation keeps page content private and avoids unnecessary network round trips.</p>
+        </article>
+      </main>
+    `;
+
+    const seen: string[] = [];
+    const session = createSession(
+      document,
+      mockEngine(
+        seen,
+        () => '로컬 번역은 페이지 내용을 안전하게 유지하고 불필요한 네트워크 왕복을 줄입니다.',
+      ),
+      { display: 'replace', targetLanguage: 'ko', targetExplicit: false },
+    );
+
+    await session.handle('post');
+    await session.whenIdle();
+
+    expect(document.getElementById('p1')?.textContent).toContain('로컬 번역은 페이지 내용을');
+    expect(session.state().pageLanguage).toBe('en');
+    expect(resolvePageTarget(session.state().pageLanguage, 'ko', false)).toBe('ko');
+
+    session.restore();
+    expect(session.state().pageLanguage).toBe('en');
+
+    // 2) Unlabeled English tweet inside a Korean UI shell (<html lang="ko">).
+    document.documentElement.lang = 'ko';
+    document.body.innerHTML = `
+      <main>
+        <article data-testid="tweet">
+          <div id="tweet-en" data-testid="tweetText"><span>This English tweet has no explicit lang attribute on a Korean UI shell.</span></div>
+        </article>
+      </main>
+    `;
+
+    const tweetSession = createSession(
+      document,
+      mockEngine(
+        [],
+        () => '한국어 인터페이스 안의 영어 트윗도 번역 후 원본 언어 상태를 유지해야 합니다.',
+      ),
+      { display: 'replace', targetLanguage: 'ko', targetExplicit: false },
+    );
+
+    await tweetSession.handle('post');
+    await tweetSession.whenIdle();
+
+    expect(document.getElementById('tweet-en')?.textContent).toContain(
+      '한국어 인터페이스 안의 영어 트윗',
+    );
+    expect(tweetSession.state().pageLanguage).toBeNull();
+    expect(resolvePageTarget(tweetSession.state().pageLanguage, 'ko', false)).toBe('ko');
+
+    tweetSession.restore();
+    expect(tweetSession.state().pageLanguage).toBe('ko');
+
+    // 3) Japanese article translated to Korean keeps 'ja', and refreshes on SPA navigation to a new untranslated article.
+    document.documentElement.lang = 'en';
+    document.body.innerHTML = `
+      <main id="app-main">
+        <article id="ja-post">
+          <h1>ローカル翻訳の設計メモ</h1>
+          <p id="ja-body">この記事はブラウザ内で完結する高速な翻訳パイプラインの設計について解説します。</p>
+        </article>
+      </main>
+    `;
+
+    const spaSession = createSession(
+      document,
+      mockEngine(
+        [],
+        () => '이 글은 브라우저 내부에서 완결되는 고속 번역 파이프라인 설계를 설명합니다.',
+      ),
+      { display: 'replace', targetLanguage: 'ko', targetExplicit: false },
+    );
+
+    await spaSession.handle('post');
+    await spaSession.whenIdle();
+
+    expect(spaSession.state().pageLanguage).toBe('ja');
+    expect(resolvePageTarget(spaSession.state().pageLanguage, 'ko', false)).toBe('ko');
+
+    // Replace the entire article with a fresh untranslated English article (SPA navigation).
+    const main = document.getElementById('app-main');
+    if (main) {
+      main.innerHTML = `
+        <article id="en-post">
+          <h1>Follow-up release notes</h1>
+          <p id="en-body">This newly navigated article is written in English and has not been translated yet.</p>
+        </article>
+      `;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    await spaSession.whenIdle();
+
+    expect(spaSession.state().pageLanguage).toBe('en');
+    expect(resolvePageTarget(spaSession.state().pageLanguage, 'ko', false)).toBe('ko');
   });
 });

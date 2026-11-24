@@ -239,6 +239,7 @@ export class PageSession {
   private scope: TranslationScope = 'page';
   private postNotFound = false;
   private postScopes: Element[] = [];
+  private postSourceLanguage: string | null | undefined = undefined;
   private paused = false;
   private pendingScans = 0;
   private scanChain: Promise<void> = Promise.resolve();
@@ -570,6 +571,10 @@ export class PageSession {
     this.eagerOnce = true;
     this.lastRateAt = 0;
     this.rememberSourceLanguage();
+    this.postSourceLanguage =
+      scope === 'post'
+        ? resolvePostSourceLanguage(this.postScopes, this.documentSourceLanguage())
+        : undefined;
     this.alignTargetLanguage();
     this.doc.documentElement.lang = this.prefs.targetLanguage;
     this.publishState();
@@ -582,6 +587,7 @@ export class PageSession {
     this.scope = 'page';
     this.postNotFound = false;
     this.postScopes = [];
+    this.postSourceLanguage = undefined;
     this.targetAdjusted = false;
     const source = this.doc.documentElement.getAttribute('data-sakutto-source-lang');
     if (source !== null) {
@@ -863,7 +869,14 @@ export class PageSession {
   private async scanRoot(): Promise<void> {
     let index = 0;
     if (this.scope === 'post') {
+      const previousScopes = new Set(this.postScopes);
       const scopes = collectDocumentPostScopes(this.doc);
+      if (
+        scopes.length > 0 &&
+        scopes.every((scope) => !previousScopes.has(scope) && !this.hasLiveInScope(scope))
+      ) {
+        this.postSourceLanguage = resolvePostSourceLanguage(scopes, this.documentSourceLanguage());
+      }
       this.postScopes = scopes;
       const seen = new Set<Element>();
       for (const scope of scopes) {
@@ -1013,12 +1026,28 @@ export class PageSession {
     root.setAttribute('data-sakutto-source-lang', root.lang);
   }
 
-  private sourceLanguage(): string | null {
+  private hasLiveInScope(scope: Element): boolean {
+    for (const item of this.live.values()) {
+      if (item.role !== 'page' || !item.model) continue;
+      const block = item.model.block;
+      if (scope.contains(block) || block.contains(scope)) return true;
+    }
+    return false;
+  }
+
+  private documentSourceLanguage(): string | null {
     const root = this.doc.documentElement;
-    const documentSource = root.hasAttribute('data-sakutto-source-lang')
+    return root.hasAttribute('data-sakutto-source-lang')
       ? (canonicalPageLanguage(root.getAttribute('data-sakutto-source-lang')) ??
-        this.detectedLanguage)
+          this.detectedLanguage)
       : (canonicalPageLanguage(root.lang) ?? this.detectedLanguage);
+  }
+
+  private sourceLanguage(): string | null {
+    if (this.scope === 'post' && this.postSourceLanguage !== undefined) {
+      return this.postSourceLanguage;
+    }
+    const documentSource = this.documentSourceLanguage();
     if (this.scope === 'post' && this.postScopes.length > 0) {
       return resolvePostSourceLanguage(this.postScopes, documentSource);
     }
