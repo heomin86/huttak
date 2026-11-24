@@ -43,6 +43,10 @@ describe('extension manifest', () => {
         suggested_key: { default: 'Alt+A' },
         description: '__MSG_commandTranslate__',
       },
+      'translate-post': {
+        suggested_key: { default: 'Alt+P' },
+        description: '__MSG_commandTranslatePost__',
+      },
       'toggle-bilingual': {
         suggested_key: { default: 'Alt+B' },
         description: '__MSG_commandBilingual__',

@@ -272,6 +272,9 @@
   "commandTranslate": {
     "message": "Translate this page or restore the original"
   },
+  "commandTranslatePost": {
+    "message": "Translate only the main post or article, or restore the original"
+  },
   "commandBilingual": {
     "message": "Translate in bilingual view, or switch the current view"
   },
@@ -281,11 +284,17 @@
   "contextTranslatePage": {
     "message": "Translate this page"
   },
+  "contextTranslatePost": {
+    "message": "Translate post only"
+  },
   "contextTranslateSelection": {
     "message": "Translate the selected text"
   },
   "translateThisPage": {
     "message": "Translate this page"
+  },
+  "translatePostOnly": {
+    "message": "Translate post only"
   },
   "restoreThisPage": {
     "message": "Restore the original"
@@ -320,6 +329,31 @@
         "content": "$1"
       }
     }
+  },
+  "postProgress": {
+    "message": "Translating post $DONE$ / $TOTAL$",
+    "placeholders": {
+      "done": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      }
+    }
+  },
+  "postTranslated": {
+    "message": "Translated the post only."
+  },
+  "postPartial": {
+    "message": "$BLOCKS$ parts of this post could not be translated.",
+    "placeholders": {
+      "blocks": {
+        "content": "$1"
+      }
+    }
+  },
+  "postNotFound": {
+    "message": "Could not find a distinct post or article on this page. Try translating the whole page instead."
   },
   "pageAlwaysOn": {
     "message": "This site is always translated."
@@ -370,6 +404,9 @@
   },
   "shortcutTranslate": {
     "message": "Alt+A (Option+A on a Mac) translates the page or restores the original."
+  },
+  "shortcutPost": {
+    "message": "Alt+P (Option+P on a Mac) translates only the post or article, or restores the original."
   },
   "shortcutBilingual": {
     "message": "Alt+B (Option+B on a Mac) switches between replacement and bilingual view, and remembers the choice for this site."

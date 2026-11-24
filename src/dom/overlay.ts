@@ -20,6 +20,10 @@ export interface OverlayLabels {
   barDone: string;
   /** Shown when some source prose had no translatable segment. */
   barPartial: (blocks: number) => string;
+  barPostProgress?: (done: number, total: number) => string;
+  barPostDone?: string;
+  barPostPartial?: (blocks: number) => string;
+  postNotFound?: string;
   barOriginal: string;
   barAlways: string;
   barAlwaysOn: string;

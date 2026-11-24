@@ -9,6 +9,7 @@ import {
   isModelDownloadRequest,
   isModelProgressMessage,
   isModelUseRequest,
+  isPageCommandRequest,
   isPageInfo,
   isPageInfoRequest,
   isPageViewState,
@@ -154,5 +155,16 @@ describe('page view state contract', () => {
     const { total, ...missing } = base;
     expect(total).toBe(3);
     expect(isPageViewState({ ...missing, skipped: 0 })).toBe(false);
+  });
+
+  it('validates post-only scope fields and page commands', () => {
+    expect(isPageViewState({ ...base, scope: 'post', postNotFound: false })).toBe(true);
+    expect(isPageViewState({ ...base, scope: 'page', postNotFound: true })).toBe(true);
+    expect(isPageViewState({ ...base, scope: 'sidebar' })).toBe(false);
+    expect(isPageViewState({ ...base, postNotFound: 'yes' })).toBe(false);
+
+    expect(isPageCommandRequest({ type: 'page:command', command: 'post' })).toBe(true);
+    expect(isPageCommandRequest({ type: 'page:command', command: 'toggle' })).toBe(true);
+    expect(isPageCommandRequest({ type: 'page:command', command: 'unknown' })).toBe(false);
   });
 });

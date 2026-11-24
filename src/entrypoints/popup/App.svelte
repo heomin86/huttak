@@ -66,7 +66,10 @@
   );
   let display = $derived(rule?.display ?? settings?.display ?? 'replace');
   let translated = $derived(view?.active === true);
-  let primaryLabel = $derived(translated ? t('restoreThisPage') : t('translateThisPage'));
+  let postActive = $derived(translated && view?.scope === 'post');
+  let fullActive = $derived(translated && view?.scope !== 'post');
+  let primaryLabel = $derived(fullActive ? t('restoreThisPage') : t('translateThisPage'));
+  let postLabel = $derived(postActive ? t('restoreThisPage') : t('translatePostOnly'));
   /**
    * The toolbar button starts a page translation, so it waits for the model the same way
    * the onboarding card does. Restoring an already translated page is always allowed, and
@@ -172,7 +175,7 @@
     }
   }
 
-  async function translatePage() {
+  async function runPageCommand(command: 'toggle' | 'post' | 'restore') {
     if (commandBusy || tabId === undefined || !host) return;
     commandBusy = true;
     try {
@@ -180,10 +183,18 @@
         pageReady = false;
         return;
       }
-      view = await requestPageCommand(tabId, view?.active ? 'restore' : 'toggle');
+      view = await requestPageCommand(tabId, command);
     } finally {
       commandBusy = false;
     }
+  }
+
+  async function translatePage() {
+    await runPageCommand(fullActive ? 'restore' : 'toggle');
+  }
+
+  async function translatePost() {
+    await runPageCommand(postActive ? 'restore' : 'post');
   }
 
   async function setAlways(event: Event) {
@@ -293,16 +304,30 @@
     </div>
   </header>
 
-  <button
-    class="button block"
-    type="button"
-    aria-keyshortcuts="Alt+A"
-    aria-busy={view?.pending ? 'true' : 'false'}
-    disabled={!pageReady || commandBusy || !canStart}
-    onclick={translatePage}
-  >
-    {primaryLabel}
-  </button>
+  <div class="page-actions">
+    <button
+      class="button block"
+      class:secondary={postActive}
+      type="button"
+      aria-keyshortcuts="Alt+A"
+      aria-busy={fullActive && view?.pending ? 'true' : 'false'}
+      disabled={!pageReady || commandBusy || !canStart}
+      onclick={translatePage}
+    >
+      {primaryLabel}
+    </button>
+    <button
+      class="button block"
+      class:secondary={!postActive}
+      type="button"
+      aria-keyshortcuts="Alt+P"
+      aria-busy={postActive && view?.pending ? 'true' : 'false'}
+      disabled={!pageReady || commandBusy || !canStart}
+      onclick={translatePost}
+    >
+      {postLabel}
+    </button>
+  </div>
 
   {#if !canStart}
     <div class="panel gate" role="status">
@@ -332,7 +357,9 @@
   {/if}
   {#if view?.active && view.pending > 0 && view.total > 0}
     <p class="muted" aria-live="polite">
-      {t('pageProgress', [String(view.done), String(view.total)])}
+      {view.scope === 'post'
+        ? t('postProgress', [String(view.done), String(view.total)])
+        : t('pageProgress', [String(view.done), String(view.total)])}
     </p>
     <div
       class="track"
@@ -347,11 +374,18 @@
   {:else if view?.pending}
     <p class="muted">{t('pageTranslating')}</p>
   {/if}
+  {#if view?.postNotFound}
+    <p class="muted" role="status">{t('postNotFound')}</p>
+  {/if}
   {#if view?.targetAdjusted}
     <p class="muted">{t('targetAdjustedNote')}</p>
   {/if}
   {#if view?.active && view.pending === 0 && view.skipped > 0}
-    <p class="muted" role="status">{t('pagePartial', [String(view.skipped)])}</p>
+    <p class="muted" role="status">
+      {view.scope === 'post'
+        ? t('postPartial', [String(view.skipped)])
+        : t('pagePartial', [String(view.skipped)])}
+    </p>
   {/if}
   {#if view?.sameLanguage}
     <p class="muted">{t('sameLanguageHint')}</p>
@@ -414,6 +448,7 @@
 
   <ul class="shortcuts">
     <li>{t('shortcutTranslate')}</li>
+    <li>{t('shortcutPost')}</li>
     <li>{t('shortcutBilingual')}</li>
     <li>{t('shortcutSelection')}</li>
   </ul>
@@ -440,6 +475,11 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
+  }
+
+  .page-actions {
+    display: grid;
+    gap: var(--space-2);
   }
 
   .brand img {

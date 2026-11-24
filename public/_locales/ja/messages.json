@@ -272,6 +272,9 @@
   "commandTranslate": {
     "message": "このページを翻訳します。または原文に戻します。"
   },
+  "commandTranslatePost": {
+    "message": "この記事・投稿の本文だけを翻訳します。または原文に戻します。"
+  },
   "commandBilingual": {
     "message": "対訳で翻訳を始めるか、表示中の訳し方を切り替えます。"
   },
@@ -281,11 +284,17 @@
   "contextTranslatePage": {
     "message": "このページを翻訳"
   },
+  "contextTranslatePost": {
+    "message": "記事のみ翻訳"
+  },
   "contextTranslateSelection": {
     "message": "選択したテキストを翻訳"
   },
   "translateThisPage": {
     "message": "このページを翻訳"
+  },
+  "translatePostOnly": {
+    "message": "記事のみ翻訳"
   },
   "restoreThisPage": {
     "message": "原文に戻す"
@@ -320,6 +329,31 @@
         "content": "$1"
       }
     }
+  },
+  "postProgress": {
+    "message": "記事を翻訳中 $DONE$ / $TOTAL$",
+    "placeholders": {
+      "done": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      }
+    }
+  },
+  "postTranslated": {
+    "message": "記事のみ翻訳しました。"
+  },
+  "postPartial": {
+    "message": "記事の中で翻訳できない箇所が $BLOCKS$ 件残っています。",
+    "placeholders": {
+      "blocks": {
+        "content": "$1"
+      }
+    }
+  },
+  "postNotFound": {
+    "message": "このページで記事や投稿の本文を見つけられませんでした。ページ全体の翻訳をお試しください。"
   },
   "pageAlwaysOn": {
     "message": "このサイトは常に翻訳します。"
@@ -370,6 +404,9 @@
   },
   "shortcutTranslate": {
     "message": "Alt+A（Mac は Option+A）で翻訳と原文を切り替えます"
+  },
+  "shortcutPost": {
+    "message": "Alt+P（Mac は Option+P）で記事・投稿の本文だけを翻訳したり、原文に戻したりします。"
   },
   "shortcutBilingual": {
     "message": "Alt+B（Mac は Option+B）で置換表示と対訳表示を切り替え、このサイトの設定として記憶します。"
