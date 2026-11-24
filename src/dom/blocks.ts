@@ -272,6 +272,11 @@ export function isScreenReaderOnly(element: Element): boolean {
  */
 class VisibilityProbe {
   private readonly memo = new WeakMap<Element, boolean>();
+  private readonly shouldSkip: ((element: Element) => boolean) | undefined;
+
+  constructor(shouldSkip?: (element: Element) => boolean) {
+    this.shouldSkip = shouldSkip;
+  }
 
   /** False for the element or any container above it that is hidden or excluded. */
   skipped(element: Element): boolean {
@@ -285,6 +290,7 @@ class VisibilityProbe {
     const value =
       (parent !== null && this.skipped(parent)) ||
       isTranslationExcluded(element) ||
+      (this.shouldSkip !== undefined && this.shouldSkip(element)) ||
       isAriaHiddenLeaf(element) ||
       isScreenReaderOnly(element) ||
       isCollapsedDetail(element) ||
@@ -691,8 +697,13 @@ function isSkipped(element: Element, probe: VisibilityProbe): boolean {
   return probe.skipped(element);
 }
 
-export function listTranslatableBlocks(root: ParentNode): Element[] {
-  return [...eachTranslatableBlock(root)];
+export interface BlockWalkOptions {
+  /** Extra predicate for skipping subtrees inside the walked root (e.g. chrome in post-only mode). */
+  shouldSkip?: (element: Element) => boolean;
+}
+
+export function listTranslatableBlocks(root: ParentNode, options?: BlockWalkOptions): Element[] {
+  return [...eachTranslatableBlock(root, options)];
 }
 
 /**
@@ -716,18 +727,26 @@ type WalkContext = 'flow' | 'item' | 'row';
  * They are ranked later, not dropped: on a model card, an issue or a dashboard the
  * sidebar is often the only prose a reader wants.
  */
-export function* eachTranslatableBlock(root: ParentNode): Generator<Element> {
+export function* eachTranslatableBlock(
+  root: ParentNode,
+  options?: BlockWalkOptions,
+): Generator<Element> {
   const start = root instanceof Document ? root.documentElement : root;
   if (!start) return;
-  const probe = new VisibilityProbe();
+  const scopedSkip =
+    options?.shouldSkip !== undefined
+      ? (element: Element) =>
+          element !== start && start.contains(element) && options.shouldSkip!(element)
+      : undefined;
+  const probe = new VisibilityProbe(scopedSkip);
   const layout = new LayoutProbe();
   const repeatedCells = repeatedCellTexts(start);
   if (start instanceof Element) {
-    yield* visitBlock(start, probe, layout, 'flow', repeatedCells);
+    yield* visitBlock(start, probe, layout, 'flow', repeatedCells, scopedSkip);
     return;
   }
   for (const child of start.children) {
-    yield* visitBlock(child, probe, layout, 'flow', repeatedCells);
+    yield* visitBlock(child, probe, layout, 'flow', repeatedCells, scopedSkip);
   }
 }
 
@@ -752,8 +771,10 @@ function* visitBlock(
   layout: LayoutProbe,
   context: WalkContext,
   repeatedCells: ReadonlySet<string>,
+  shouldSkip?: (element: Element) => boolean,
 ): Generator<Element> {
   if (isTranslationExcluded(element) || isAriaHiddenLeaf(element)) return;
+  if (shouldSkip !== undefined && shouldSkip(element)) return;
 
   // A repeated row's cell holds a value: a handle, a language tag, a count, a stat line.
   // Sending it to the model spends a completion to hand it back, and a translated value in
@@ -770,7 +791,7 @@ function* visitBlock(
     // is checked below, and a hidden wrapper hides the blocks inside it, so probing the
     // wrappers too would repeat the same ancestor walk for every level of a component tree.
     for (const child of element.children) {
-      yield* visitBlock(child, probe, layout, 'flow', repeatedCells);
+      yield* visitBlock(child, probe, layout, 'flow', repeatedCells, shouldSkip);
     }
     return;
   }
@@ -816,7 +837,7 @@ function* visitBlock(
 
   const childContext: WalkContext = rows ? 'row' : items ? 'item' : 'flow';
   for (const child of element.children) {
-    yield* visitBlock(child, probe, layout, childContext, repeatedCells);
+    yield* visitBlock(child, probe, layout, childContext, repeatedCells, shouldSkip);
   }
 }
 

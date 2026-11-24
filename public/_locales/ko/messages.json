@@ -272,6 +272,9 @@
   "commandTranslate": {
     "message": "이 페이지를 번역하거나 원문으로 되돌리기"
   },
+  "commandTranslatePost": {
+    "message": "이 페이지의 게시글이나 본문만 번역하거나 원문으로 되돌리기"
+  },
   "commandBilingual": {
     "message": "원문과 함께 보기로 번역하거나 보기 방식 바꾸기"
   },
@@ -281,11 +284,17 @@
   "contextTranslatePage": {
     "message": "이 페이지 번역"
   },
+  "contextTranslatePost": {
+    "message": "게시글만 번역"
+  },
   "contextTranslateSelection": {
     "message": "선택한 글 번역"
   },
   "translateThisPage": {
     "message": "이 페이지 번역"
+  },
+  "translatePostOnly": {
+    "message": "게시글만 번역"
   },
   "restoreThisPage": {
     "message": "원문으로 되돌리기"
@@ -320,6 +329,31 @@
         "content": "$1"
       }
     }
+  },
+  "postProgress": {
+    "message": "게시글 번역 중 $DONE$ / $TOTAL$",
+    "placeholders": {
+      "done": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      }
+    }
+  },
+  "postTranslated": {
+    "message": "게시글만 번역했습니다."
+  },
+  "postPartial": {
+    "message": "게시글에서 $BLOCKS$곳을 번역하지 못했습니다.",
+    "placeholders": {
+      "blocks": {
+        "content": "$1"
+      }
+    }
+  },
+  "postNotFound": {
+    "message": "이 페이지에서 게시글이나 본문 영역을 찾지 못했습니다. 전체 페이지 번역을 사용해 보세요."
   },
   "pageAlwaysOn": {
     "message": "이 사이트는 항상 번역합니다."
@@ -370,6 +404,9 @@
   },
   "shortcutTranslate": {
     "message": "Alt+A(Mac은 Option+A)로 페이지를 번역하거나 원문으로 되돌립니다."
+  },
+  "shortcutPost": {
+    "message": "Alt+P(Mac은 Option+P)로 게시글이나 본문만 번역하거나 원문으로 되돌립니다."
   },
   "shortcutBilingual": {
     "message": "Alt+B(Mac은 Option+B)로 원문 바꾸기와 원문과 함께 보기를 오가고, 이 사이트에 기억합니다."

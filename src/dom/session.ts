@@ -48,6 +48,12 @@ import {
   type VisibilityBand,
 } from './priority';
 import {
+  collectDocumentPostScopes,
+  eachPostBlock,
+  resolvePostSourceLanguage,
+  type TranslationScope,
+} from './post-scope';
+import {
   applyTranslation,
   paintPlain,
   removeTranslationUi,
@@ -107,6 +113,8 @@ export interface SessionPreferences {
 
 export interface PageViewState {
   active: boolean;
+  scope: TranslationScope;
+  postNotFound: boolean;
   display: 'replace' | 'bilingual';
   engine: EngineKind | null;
   pending: number;
@@ -228,6 +236,9 @@ export class PageSession {
   private labels: OverlayLabels;
   private detectedLanguage: string | null = null;
   private active = false;
+  private scope: TranslationScope = 'page';
+  private postNotFound = false;
+  private postScopes: Element[] = [];
   private paused = false;
   private pendingScans = 0;
   private scanChain: Promise<void> = Promise.resolve();
@@ -464,6 +475,8 @@ export class PageSession {
 
     return {
       active: this.active,
+      scope: this.scope,
+      postNotFound: this.postNotFound,
       display: this.prefs.display,
       engine,
       pending: tracked.filter((item) => item.state === 'queued' || item.state === 'running').length,
@@ -485,10 +498,13 @@ export class PageSession {
     };
   }
 
-  async handle(command: 'toggle' | 'restore' | 'bilingual' | 'selection'): Promise<void> {
+  async handle(command: 'toggle' | 'post' | 'restore' | 'bilingual' | 'selection'): Promise<void> {
     switch (command) {
       case 'toggle':
         await this.toggle();
+        return;
+      case 'post':
+        await this.togglePost();
         return;
       case 'restore':
         this.restore();
@@ -503,12 +519,42 @@ export class PageSession {
   }
 
   async toggle(): Promise<void> {
-    if (this.active) this.restore();
-    else await this.translate();
+    if (this.active && this.scope === 'page') this.restore();
+    else await this.translate('page');
   }
 
-  async translate(): Promise<void> {
-    if (this.active) return;
+  async togglePost(): Promise<void> {
+    if (this.active && this.scope === 'post') this.restore();
+    else await this.translatePost();
+  }
+
+  async translatePost(): Promise<void> {
+    await this.translate('post');
+  }
+
+  async translate(scope: TranslationScope = 'page'): Promise<void> {
+    if (this.active && this.scope === scope) return;
+    if (scope === 'post') {
+      const detected = collectDocumentPostScopes(this.doc);
+      if (detected.length === 0) {
+        this.postNotFound = true;
+        if (this.labels.postNotFound) this.overlay.showStatus(this.labels.postNotFound);
+        return;
+      }
+      if (this.active) this.restore();
+      this.postScopes = collectDocumentPostScopes(this.doc);
+      if (this.postScopes.length === 0) {
+        this.postNotFound = true;
+        if (this.labels.postNotFound) this.overlay.showStatus(this.labels.postNotFound);
+        return;
+      }
+    } else {
+      if (this.active) this.restore();
+      this.postScopes = [];
+    }
+
+    this.scope = scope;
+    this.postNotFound = false;
     this.active = true;
     this.navigating = false;
     this.sweepLegacyNotes();
@@ -533,6 +579,9 @@ export class PageSession {
 
   restore(): void {
     this.active = false;
+    this.scope = 'page';
+    this.postNotFound = false;
+    this.postScopes = [];
     this.targetAdjusted = false;
     const source = this.doc.documentElement.getAttribute('data-sakutto-source-lang');
     if (source !== null) {
@@ -550,6 +599,7 @@ export class PageSession {
     this.live.clear();
     this.liveByBlock.clear();
     this.produced.clear();
+    this.skippedBlocks.clear();
     this.selection = null;
     this.selectionShown = false;
     this.pointerDown = false;
@@ -561,6 +611,7 @@ export class PageSession {
     this.perf?.remove();
     this.perf = null;
     delete this.doc.documentElement.dataset.sakuttoState;
+    delete this.doc.documentElement.dataset.sakuttoScope;
     delete this.doc.documentElement.dataset.sakuttoProgress;
     delete this.doc.documentElement.dataset.sakuttoRate;
     this.resolveIdle();
@@ -810,13 +861,35 @@ export class PageSession {
   }
 
   private async scanRoot(): Promise<void> {
+    let index = 0;
+    if (this.scope === 'post') {
+      const scopes = collectDocumentPostScopes(this.doc);
+      this.postScopes = scopes;
+      const seen = new Set<Element>();
+      for (const scope of scopes) {
+        for (const block of eachPostBlock(scope)) {
+          if (!this.active) return;
+          if (seen.has(block)) continue;
+          seen.add(block);
+          this.addBlock(block, index);
+          index += 1;
+          if (index % SLICE_SIZE === 0) {
+            if (this.hasVisibleProse()) this.pump();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          }
+        }
+      }
+      this.bindObservers();
+      this.bindVisibility();
+      return;
+    }
+
     const roots: ParentNode[] = [];
     for (const document of collectDocuments(this.doc)) {
       roots.push(document);
       for (const shadow of collectShadowRoots(document)) roots.push(shadow);
     }
 
-    let index = 0;
     for (const root of roots) {
       for (const block of eachTranslatableBlock(root)) {
         if (!this.active) return;
@@ -942,13 +1015,14 @@ export class PageSession {
 
   private sourceLanguage(): string | null {
     const root = this.doc.documentElement;
-    if (root.hasAttribute('data-sakutto-source-lang')) {
-      return (
-        canonicalPageLanguage(root.getAttribute('data-sakutto-source-lang')) ??
-        this.detectedLanguage
-      );
+    const documentSource = root.hasAttribute('data-sakutto-source-lang')
+      ? (canonicalPageLanguage(root.getAttribute('data-sakutto-source-lang')) ??
+        this.detectedLanguage)
+      : (canonicalPageLanguage(root.lang) ?? this.detectedLanguage);
+    if (this.scope === 'post' && this.postScopes.length > 0) {
+      return resolvePostSourceLanguage(this.postScopes, documentSource);
     }
-    return canonicalPageLanguage(root.lang) ?? this.detectedLanguage;
+    return documentSource;
   }
 
   private alignTargetLanguage(): void {
@@ -1687,12 +1761,20 @@ export class PageSession {
   }
 
   private barText(view: PageViewState): string {
+    const post = view.scope === 'post';
+    const progress = post
+      ? (this.labels.barPostProgress ?? this.labels.barProgress)
+      : this.labels.barProgress;
+    const partial = post
+      ? (this.labels.barPostPartial ?? this.labels.barPartial)
+      : this.labels.barPartial;
+    const done = post ? (this.labels.barPostDone ?? this.labels.barDone) : this.labels.barDone;
     const base =
       view.pending > 0
-        ? this.labels.barProgress(view.done, view.total)
+        ? progress(view.done, view.total)
         : view.skipped > 0
-          ? this.labels.barPartial(view.skipped)
-          : this.labels.barDone;
+          ? partial(view.skipped)
+          : done;
     if (view.tokensPerSecond === null || view.segmentsPerSecond === null) return base;
     return `${base} · ${this.labels.barRate(formatRate(view.tokensPerSecond), formatRate(view.segmentsPerSecond))}`;
   }
@@ -1750,6 +1832,7 @@ export class PageSession {
     const root = this.doc.documentElement;
     if (!this.active) {
       delete root.dataset.sakuttoState;
+      delete root.dataset.sakuttoScope;
       delete root.dataset.sakuttoProgress;
       this.overlay.hideBar();
       return;
@@ -1763,6 +1846,7 @@ export class PageSession {
         ? 'partial'
         : 'translated'
       : 'translating';
+    root.dataset.sakuttoScope = this.scope;
     const blocksDone = Math.min(view.total, Math.floor(view.done));
     root.dataset.sakuttoProgress = `${String(blocksDone)}/${String(view.total)}`;
     if (view.tokensPerSecond !== null && view.segmentsPerSecond !== null) {

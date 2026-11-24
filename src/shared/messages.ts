@@ -9,6 +9,7 @@ import {
 import { isEngineCapabilities, type EngineCapabilities } from './capabilities';
 import type { EngineKind } from '@/engine/types';
 import { isSiteHost, type SiteAuto } from '@/dom/sites';
+import type { TranslationScope } from '@/dom/post-scope';
 import type { QualitySample } from './quality';
 import { isQualitySample } from './quality';
 import type { DisplayMode, TierPreference } from './settings';
@@ -25,7 +26,7 @@ export interface PageInfoRequest {
   type: 'page:info';
 }
 
-export type PageCommandName = 'toggle' | 'restore' | 'bilingual' | 'selection';
+export type PageCommandName = 'toggle' | 'post' | 'restore' | 'bilingual' | 'selection';
 
 export interface PageCommandRequest {
   type: 'page:command';
@@ -38,6 +39,8 @@ export interface PageStateRequest {
 
 export interface PageViewState {
   active: boolean;
+  scope?: TranslationScope;
+  postNotFound?: boolean;
   display: DisplayMode;
   engine: EngineKind | null;
   pending: number;
@@ -57,6 +60,7 @@ export interface PageViewState {
 
 const PAGE_COMMANDS: ReadonlySet<string> = new Set<PageCommandName>([
   'toggle',
+  'post',
   'restore',
   'bilingual',
   'selection',
@@ -184,6 +188,8 @@ export function isPageViewState(value: unknown): value is PageViewState {
   return (
     isRecord(value) &&
     typeof value.active === 'boolean' &&
+    (value.scope === undefined || value.scope === 'page' || value.scope === 'post') &&
+    (value.postNotFound === undefined || typeof value.postNotFound === 'boolean') &&
     (value.display === 'replace' || value.display === 'bilingual') &&
     (value.engine === null ||
       value.engine === 'plamo' ||

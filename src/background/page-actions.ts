@@ -9,6 +9,7 @@ interface PageTranslationCanceller {
 
 const SHORTCUTS: Record<string, PageCommandName> = {
   'translate-page': 'toggle',
+  'translate-post': 'post',
   'toggle-bilingual': 'bilingual',
   'translate-selection': 'selection',
 };
@@ -28,9 +29,11 @@ export function installPageActions(translations?: PageTranslationCanceller): voi
     const pageCommand =
       info.menuItemId === 'translate-selection'
         ? 'selection'
-        : info.menuItemId === 'translate-page'
-          ? 'toggle'
-          : null;
+        : info.menuItemId === 'translate-post'
+          ? 'post'
+          : info.menuItemId === 'translate-page'
+            ? 'toggle'
+            : null;
     if (!pageCommand) return;
     void runCommand(tabId, pageCommand);
   });
@@ -51,6 +54,11 @@ function installMenus(): void {
     browser.contextMenus.create({
       id: 'translate-page',
       title: browser.i18n.getMessage('contextTranslatePage'),
+      contexts: ['page'],
+    });
+    browser.contextMenus.create({
+      id: 'translate-post',
+      title: browser.i18n.getMessage('contextTranslatePost'),
       contexts: ['page'],
     });
     browser.contextMenus.create({
