@@ -81,8 +81,9 @@ const WRAPPING_QUOTES: readonly (readonly [string, string])[] = [
 ];
 
 /**
- * Drops a copied instruction, a "Translation:" label, or quotes wrapped around the whole
- * answer. The rules already forbid those; small models still print them.
+ * Drops a copied instruction, a "Translation:" label, or one pair of quotes the model
+ * wrapped around the whole answer. Quotes that belong to the English stay: a line of
+ * dialogue that opens with a quote and later closes another is not a wrapper.
  */
 export function cleanNaturalAmericanOutput(value: string): string {
   let text = value.trim();
@@ -102,14 +103,44 @@ export function cleanNaturalAmericanOutput(value: string): string {
   return text.trim();
 }
 
+/** Straight apostrophe and the curly apostrophe models use inside contractions. */
+const APOSTROPHE_MARKS = new Set(["'", '\u2019']);
+
 function stripWrappingQuotes(text: string): string {
   for (const [open, close] of WRAPPING_QUOTES) {
-    if (text.startsWith(open) && text.endsWith(close) && text.length > open.length + close.length) {
-      const inner = text.slice(open.length, text.length - close.length).trim();
-      if (inner.length > 0) return inner;
-    }
+    if (!text.startsWith(open) || !text.endsWith(close)) continue;
+    if (text.length <= open.length + close.length) continue;
+    const inner = text.slice(open.length, text.length - close.length);
+    if (inner.trim().length === 0 || hasQuoteDelimiter(inner, open, close)) continue;
+    return inner.trim();
   }
   return text;
+}
+
+/**
+ * True when `inner` still uses this quote pair as punctuation. A second delimiter means
+ * the outer pair is part of the sentence (quoted speech), not a wrapper around it.
+ * An apostrophe inside a word (`can't`, `I'm`) is not a delimiter.
+ */
+function hasQuoteDelimiter(inner: string, open: string, close: string): boolean {
+  const marks = open === close ? [open] : [open, close];
+  for (const mark of marks) {
+    let from = 0;
+    while (from < inner.length) {
+      const at = inner.indexOf(mark, from);
+      if (at < 0) break;
+      if (!isWordApostrophe(inner, mark, at)) return true;
+      from = at + mark.length;
+    }
+  }
+  return false;
+}
+
+function isWordApostrophe(text: string, mark: string, index: number): boolean {
+  if (!APOSTROPHE_MARKS.has(mark)) return false;
+  const prev = text[index - 1] ?? '';
+  const next = text[index + 1] ?? '';
+  return /[A-Za-z]/.test(prev) && /[A-Za-z]/.test(next);
 }
 
 function termsInText(input: NaturalAmericanInput): GlossaryEntry[] {

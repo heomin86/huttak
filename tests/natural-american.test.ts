@@ -73,6 +73,22 @@ describe('natural American English prompts', () => {
     );
     expect(cleanNaturalAmericanOutput('Sounds good.')).toBe('Sounds good.');
     expect(cleanNaturalAmericanOutput('I said "hello" to them.')).toBe('I said "hello" to them.');
+    expect(cleanNaturalAmericanOutput('\u201CThanks for waiting.\u201D')).toBe('Thanks for waiting.');
+    expect(cleanNaturalAmericanOutput("'I can't make it.'")).toBe("I can't make it.");
+    expect(cleanNaturalAmericanOutput('「Thanks for waiting.」')).toBe('Thanks for waiting.');
+  });
+
+  it('keeps dialogue that opens with a quote and later closes another', () => {
+    const straight = `"I can't tonight," she said. "Rain check?"`;
+    const curly = '\u201CI can\u2019t tonight,\u201D she said. \u201CRain check?\u201D';
+    const single = "'Don't go,' she said. 'Please.'";
+    const wrapped = `「${straight}」`;
+
+    expect(cleanNaturalAmericanOutput(straight)).toBe(straight);
+    expect(cleanNaturalAmericanOutput(curly)).toBe(curly);
+    expect(cleanNaturalAmericanOutput(single)).toBe(single);
+    expect(cleanNaturalAmericanOutput(`Translation: ${straight}`)).toBe(straight);
+    expect(cleanNaturalAmericanOutput(wrapped)).toBe(straight);
   });
 });
 
