@@ -6,6 +6,7 @@ import {
   isNaturalRewriteShortcut,
   isTranslateShortcut,
   reduceNaturalRewriteKey,
+  settleNaturalRewriteKey,
   type NaturalRewriteKey,
   normalizeTypedInput,
   planTypedTranslation,
@@ -207,6 +208,32 @@ describe('the natural-English rewrite shortcut', () => {
     expect(
       runsOf([{ type: 'keydown', key: 'Enter', isComposing: true }, { type: 'compositionend' }]),
     ).toEqual([]);
+  });
+
+  it('swallows the Enter the IME sends after compositionend without starting again', () => {
+    const composing: NaturalRewriteKey = {
+      type: 'keydown',
+      key: 'Enter',
+      ctrlKey: true,
+      isComposing: true,
+    };
+    const end: NaturalRewriteKey = { type: 'compositionend' };
+    const again: NaturalRewriteKey = { type: 'keydown', key: 'Enter', ctrlKey: true };
+    let armed = false;
+    let canRewrite = true;
+    const seen = [composing, end, again].map((event) => {
+      const next = settleNaturalRewriteKey(armed, canRewrite, event);
+      armed = next.armed;
+      if (next.run) canRewrite = false;
+      return next;
+    });
+
+    expect(seen[0]).toEqual({ armed: true, run: false, preventDefault: false });
+    expect(seen[1]).toEqual({ armed: false, run: true, preventDefault: false });
+    expect(seen[2]).toEqual({ armed: false, run: false, preventDefault: true });
+    expect(
+      settleNaturalRewriteKey(false, true, { type: 'keydown', key: 'Enter', metaKey: true }),
+    ).toEqual({ armed: false, run: false, preventDefault: false });
   });
 });
 

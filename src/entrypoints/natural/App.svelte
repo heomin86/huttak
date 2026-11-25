@@ -19,7 +19,7 @@
     MAX_TYPED_CHARS,
     copyTranslation,
     normalizeTypedInput,
-    reduceNaturalRewriteKey,
+    settleNaturalRewriteKey,
     typedReadiness,
     type NaturalRewriteKey,
     type TypedReadiness,
@@ -139,10 +139,10 @@
   }
 
   function applyRewriteKey(event: NaturalRewriteKey, native?: Event) {
-    const next = reduceNaturalRewriteKey(rewriteArmed, event);
+    const next = settleNaturalRewriteKey(rewriteArmed, canRewrite, event);
     rewriteArmed = next.armed;
-    if (!next.run || !canRewrite) return;
-    if (event.type === 'keydown') native?.preventDefault();
+    if (next.preventDefault) native?.preventDefault();
+    if (!next.run) return;
     void rewriteKorean();
   }
 

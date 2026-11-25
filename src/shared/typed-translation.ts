@@ -175,6 +175,24 @@ export function reduceNaturalRewriteKey(
   return { armed: false, run: false };
 }
 
+/**
+ * A matching Control+Enter keydown must not insert a line, even when a rewrite is already
+ * running. The IME re-dispatches Enter after compositionend, and that keydown arrives only
+ * after `canRewrite` has turned false. Command+Enter is not swallowed.
+ */
+export function settleNaturalRewriteKey(
+  armed: boolean,
+  canRewrite: boolean,
+  event: NaturalRewriteKey,
+): { armed: boolean; run: boolean; preventDefault: boolean } {
+  const next = reduceNaturalRewriteKey(armed, event);
+  return {
+    armed: next.armed,
+    run: next.run && canRewrite,
+    preventDefault: event.type === 'keydown' && next.run,
+  };
+}
+
 function isControlHeldEnter(event: NaturalRewriteKey): boolean {
   return event.ctrlKey === true && !blocksNaturalRewrite(event) && isEnterIdentity(event);
 }

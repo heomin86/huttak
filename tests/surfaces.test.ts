@@ -142,7 +142,7 @@ describe('natural American English input', () => {
   });
 
   it('rewrites with Control+Enter and does not take Command+Enter', () => {
-    expect(natural).toContain('reduceNaturalRewriteKey');
+    expect(natural).toContain('settleNaturalRewriteKey');
     expect(natural).toContain('oncompositionend');
     expect(natural).toContain('onkeyup');
     expect(natural).not.toContain('isTranslateShortcut');
