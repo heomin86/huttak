@@ -931,7 +931,7 @@
     "message": "바꾸는 중…"
   },
   "naturalRunHint": {
-    "message": "Ctrl+Enter(Mac은 ⌘+Enter)로도 바꿉니다."
+    "message": "Ctrl+Enter로도 바꿉니다. Mac에서도 ⌘가 아니라 Control+Enter입니다."
   },
   "naturalFailed": {
     "message": "영어로 바꾸지 못했습니다. 입력한 글은 그대로 있으니 다시 시도해 주세요."

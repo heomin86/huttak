@@ -931,7 +931,7 @@
     "message": "Rewriting…"
   },
   "naturalRunHint": {
-    "message": "Ctrl+Enter (⌘+Enter on a Mac) rewrites too."
+    "message": "Ctrl+Enter rewrites too. On a Mac, use Control+Enter, not ⌘+Enter."
   },
   "naturalFailed": {
     "message": "This could not be rewritten. Your Korean is unchanged; try again."

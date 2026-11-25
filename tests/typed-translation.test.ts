@@ -3,6 +3,7 @@ import { MAX_SEGMENT_TEXT } from '@/engine/offscreen/protocol';
 import {
   MAX_TYPED_CHARS,
   copyTranslation,
+  isNaturalRewriteShortcut,
   isTranslateShortcut,
   normalizeTypedInput,
   planTypedTranslation,
@@ -133,6 +134,28 @@ describe('the run shortcut', () => {
   it('ignores every other key', () => {
     expect(isTranslateShortcut({ key: 'a', ctrlKey: true })).toBe(false);
     expect(isTranslateShortcut({ key: 'Tab', ctrlKey: true })).toBe(false);
+  });
+});
+
+describe('the natural-English rewrite shortcut', () => {
+  it('runs on Control+Enter on every platform, including a Mac', () => {
+    expect(isNaturalRewriteShortcut({ key: 'Enter', ctrlKey: true })).toBe(true);
+    expect(isNaturalRewriteShortcut({ key: 'Enter', ctrlKey: true, metaKey: false })).toBe(true);
+  });
+
+  it('does not run on Command+Enter or Meta+Enter', () => {
+    expect(isNaturalRewriteShortcut({ key: 'Enter', metaKey: true })).toBe(false);
+    expect(isNaturalRewriteShortcut({ key: 'Enter', ctrlKey: true, metaKey: true })).toBe(false);
+  });
+
+  it('leaves a plain Enter, and ignores composition, Alt, Shift, and other keys', () => {
+    expect(isNaturalRewriteShortcut({ key: 'Enter' })).toBe(false);
+    expect(isNaturalRewriteShortcut({ key: 'Enter', shiftKey: true })).toBe(false);
+    expect(isNaturalRewriteShortcut({ key: 'Enter', ctrlKey: true, isComposing: true })).toBe(
+      false,
+    );
+    expect(isNaturalRewriteShortcut({ key: 'Enter', ctrlKey: true, altKey: true })).toBe(false);
+    expect(isNaturalRewriteShortcut({ key: 'a', ctrlKey: true })).toBe(false);
   });
 });
 

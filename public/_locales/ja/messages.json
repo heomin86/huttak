@@ -931,7 +931,7 @@
     "message": "書き換え中…"
   },
   "naturalRunHint": {
-    "message": "Ctrl+Enter（Macは⌘+Enter）でも書き換えます。"
+    "message": "Ctrl+Enterでも書き換えます。Macでは⌘ではなくControl+Enterです。"
   },
   "naturalFailed": {
     "message": "英語に書き換えられませんでした。入力した文章はそのままなので、もう一度試してください。"
