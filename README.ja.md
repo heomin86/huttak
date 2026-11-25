@@ -88,13 +88,13 @@ pnpm build          # 成果物は .output/chrome-mv3
 
 ### ショートカット
 
-| 操作                                                | Windows / Linux | Mac          |
-| --------------------------------------------------- | --------------- | ------------ |
-| ページを翻訳する、または原文に戻す                  | Alt+A           | Option (⌥)+A |
-| 記事のみ翻訳する、または原文に戻す                  | Alt+P           | Option (⌥)+P |
-| 置換表示と対訳表示を切り替える                      | Alt+B           | Option (⌥)+B |
-| 選択したテキストを翻訳する                          | Alt+S           | Option (⌥)+S |
-| 入力した文字を翻訳する（**テキストを翻訳** の画面） | Ctrl+Enter      | ⌘+Enter      |
+| 操作                                                | Windows / Linux | Mac           |
+| --------------------------------------------------- | --------------- | ------------- |
+| ページを翻訳する、または原文に戻す                  | Alt+A           | Option (⌥)+A  |
+| 記事のみ翻訳する、または原文に戻す                  | Alt+P           | Option (⌥)+P  |
+| 置換表示と対訳表示を切り替える                      | Alt+B           | Option (⌥)+B  |
+| 選択したテキストを翻訳する                          | Alt+S           | Option (⌥)+S  |
+| 入力した文字を翻訳する（**テキストを翻訳** の画面） | Ctrl+Enter      | ⌘+Enter       |
 | 自分の韓国語を自然な英語に                          | Ctrl+Enter      | Control+Enter |
 
 キーは `chrome://extensions/shortcuts` で変えられます。Mac の Chrome は、拡張機能ショートカットの Alt を Option として読みます。Alt+D は使いません。Windows と Linux の Chrome がアドレスバーに使うためです。

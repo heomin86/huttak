@@ -2,6 +2,8 @@ import {
   MAX_TYPED_CHARS,
   isNaturalRewriteShortcut,
   normalizeTypedInput,
+  reduceNaturalRewriteKey,
+  type NaturalRewriteKey,
 } from '@/shared/typed-translation';
 import { focusedEditableField } from './blocks';
 
@@ -125,6 +127,21 @@ function setNativeValue(field: HTMLInputElement | HTMLTextAreaElement, value: st
   else field.value = value;
 }
 
+/**
+ * Replaces the current selection the way typing would. Editors such as Lexical, Draft.js
+ * and ProseMirror own their text and undo a DOM change they did not make; they accept an
+ * edit that arrives as `beforeinput`/`input` from the browser. Also keeps the field's undo.
+ */
+function insertAsTyping(field: HTMLElement, text: string): boolean {
+  const doc = field.ownerDocument;
+  if (typeof doc.execCommand !== 'function') return false;
+  try {
+    return doc.execCommand('insertText', false, text);
+  } catch {
+    return false;
+  }
+}
+
 function notifyInput(field: HTMLElement, english: string): void {
   field.dispatchEvent(
     new InputEvent('input', {
@@ -144,11 +161,22 @@ export function applyNaturalFieldResult(draft: NaturalFieldDraft, english: strin
   if (!field.isConnected) return false;
   const next = english.trim();
   if (next.length === 0) return false;
+  // Typing-style insertion needs the field focused and its text selected. When the reader
+  // has moved on to another field during the rewrite, focus and selection stay where they
+  // are and the text is written directly instead.
+  const stillFocused = focusedEditableField(field.ownerDocument.activeElement) === field;
 
   if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+    const start = draft.mode === 'selection' ? draft.selectionStart : 0;
+    const end = draft.mode === 'selection' ? draft.selectionEnd : field.value.length;
+    if (field.value.slice(start, end) !== draft.raw) return false;
+    const expected = field.value.slice(0, start) + next + field.value.slice(end);
+    if (stillFocused) {
+      field.setSelectionRange(start, end);
+      if (insertAsTyping(field, next) && field.value === expected) return true;
+    }
+    if (field.value !== expected && field.value.slice(start, end) !== draft.raw) return false;
     if (draft.mode === 'selection') {
-      const slice = field.value.slice(draft.selectionStart, draft.selectionEnd);
-      if (slice !== draft.raw) return false;
       const value =
         field.value.slice(0, draft.selectionStart) + next + field.value.slice(draft.selectionEnd);
       setNativeValue(field, value);
@@ -161,6 +189,25 @@ export function applyNaturalFieldResult(draft: NaturalFieldDraft, english: strin
     }
     notifyInput(field, next);
     return true;
+  }
+
+  const doc = field.ownerDocument;
+  const selection = doc.getSelection();
+  let target: Range | null = null;
+  if (draft.mode === 'selection' && draft.range) {
+    if (draft.range.startContainer.isConnected && draft.range.toString() === draft.raw) {
+      target = draft.range;
+    }
+  } else if (plainText(field) === draft.raw) {
+    target = doc.createRange();
+    target.selectNodeContents(field);
+  }
+  if (!target) return false;
+  if (selection && stillFocused) {
+    selection.removeAllRanges();
+    selection.addRange(target);
+    const before = plainText(field);
+    if (insertAsTyping(field, next) && plainText(field) !== before) return true;
   }
 
   if (draft.mode === 'selection' && draft.range) {
@@ -235,13 +282,69 @@ export function installNaturalFieldShortcut(
     }
   };
 
+  /** Control+Enter came while the last Hangul syllable was still composing. */
+  let armed = false;
+  let armedTarget: EventTarget | null = null;
+  /**
+   * After a rewrite that started on compositionend, the IME can deliver the same
+   * Control+Enter again as a plain keydown. That one is swallowed, so it neither starts a
+   * second rewrite nor reaches the page as "send".
+   */
+  let swallowUntil = 0;
+  const now = (): number => doc.defaultView?.performance.now() ?? Date.now();
+
+  const keyOf = (type: 'keydown' | 'keyup', event: KeyboardEvent): NaturalRewriteKey => ({
+    type,
+    key: event.key,
+    code: event.code,
+    keyCode: event.keyCode,
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
+    altKey: event.altKey,
+    shiftKey: event.shiftKey,
+    isComposing: event.isComposing,
+  });
+
+  const settle = (key: NaturalRewriteKey, target: EventTarget | null): boolean => {
+    const next = reduceNaturalRewriteKey(armed, key);
+    if (next.armed && !armed) armedTarget = target;
+    armed = next.armed;
+    if (!next.run) return false;
+    const from = key.type === 'keydown' ? target : armedTarget;
+    armedTarget = null;
+    return start(from);
+  };
+
   const onKeyDown = (event: Event): void => {
     if (!(event instanceof KeyboardEvent) || event.repeat) return;
-    if (!isNaturalRewriteShortcut(event)) return;
-    const draft = readNaturalFieldDraft(doc, event.target);
-    if (!draft) return;
+    if (swallowUntil > 0 && isNaturalRewriteShortcut(event)) {
+      const swallow = now() <= swallowUntil;
+      swallowUntil = 0;
+      if (swallow) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+    }
+    if (!settle(keyOf('keydown', event), event.target)) return;
     event.preventDefault();
     event.stopPropagation();
+  };
+
+  const onKeyUp = (event: Event): void => {
+    if (!(event instanceof KeyboardEvent) || !armed) return;
+    if (settle(keyOf('keyup', event), event.target)) swallowUntil = now() + 400;
+  };
+
+  const onCompositionEnd = (): void => {
+    if (!armed) return;
+    if (settle({ type: 'compositionend' }, null)) swallowUntil = now() + 400;
+  };
+
+  /** Starts a rewrite of the field the key was in. False when there is nothing to rewrite. */
+  const start = (target: EventTarget | null): boolean => {
+    const draft = readNaturalFieldDraft(doc, target);
+    if (!draft) return false;
 
     controller?.abort();
     const current = new AbortController();
@@ -266,13 +369,18 @@ export function installNaturalFieldShortcut(
         if (token !== generation || current.signal.aborted) return;
         show(shortcut.labels.failed, false);
       });
+    return true;
   };
 
   doc.addEventListener('keydown', onKeyDown, true);
+  doc.addEventListener('keyup', onKeyUp, true);
+  doc.addEventListener('compositionend', onCompositionEnd, true);
   return () => {
     generation += 1;
     controller?.abort();
     doc.removeEventListener('keydown', onKeyDown, true);
+    doc.removeEventListener('keyup', onKeyUp, true);
+    doc.removeEventListener('compositionend', onCompositionEnd, true);
     hide();
   };
 }

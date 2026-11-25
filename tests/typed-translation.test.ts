@@ -5,6 +5,9 @@ import {
   copyTranslation,
   isNaturalRewriteShortcut,
   isTranslateShortcut,
+  reduceNaturalRewriteKey,
+  settleNaturalRewriteKey,
+  type NaturalRewriteKey,
   normalizeTypedInput,
   planTypedTranslation,
   typedReadiness,
@@ -157,7 +160,93 @@ describe('the natural-English rewrite shortcut', () => {
     expect(isNaturalRewriteShortcut({ key: 'Enter', ctrlKey: true, altKey: true })).toBe(false);
     expect(isNaturalRewriteShortcut({ key: 'a', ctrlKey: true })).toBe(false);
   });
+
+  it('starts once after a composing Control+Enter, on compositionend or the next keyup', () => {
+    const composingEnter: NaturalRewriteKey = {
+      type: 'keydown',
+      key: 'Enter',
+      code: 'Enter',
+      ctrlKey: true,
+      isComposing: true,
+    };
+    const processEnter: NaturalRewriteKey = {
+      type: 'keydown',
+      key: 'Process',
+      code: 'Enter',
+      keyCode: 229,
+      ctrlKey: true,
+      isComposing: true,
+    };
+    const end: NaturalRewriteKey = { type: 'compositionend' };
+    const keyup: NaturalRewriteKey = {
+      type: 'keyup',
+      key: 'Enter',
+      code: 'Enter',
+      ctrlKey: true,
+      isComposing: false,
+    };
+
+    expect(runsOf([composingEnter, end, keyup])).toEqual([1]);
+    expect(runsOf([processEnter, { ...keyup, isComposing: true }, end])).toEqual([2]);
+    expect(runsOf([processEnter, keyup, end])).toEqual([1]);
+  });
+
+  it('still starts a committed Control+Enter on keydown and never starts Command+Enter', () => {
+    const committed: NaturalRewriteKey = { type: 'keydown', key: 'Enter', ctrlKey: true };
+    const keyup: NaturalRewriteKey = { type: 'keyup', key: 'Enter', ctrlKey: true };
+    expect(runsOf([committed, keyup, { type: 'compositionend' }])).toEqual([0]);
+
+    const command: NaturalRewriteKey = {
+      type: 'keydown',
+      key: 'Enter',
+      metaKey: true,
+      isComposing: true,
+    };
+    expect(
+      runsOf([command, { type: 'compositionend' }, { type: 'keyup', key: 'Enter', metaKey: true }]),
+    ).toEqual([]);
+    expect(
+      runsOf([{ type: 'keydown', key: 'Enter', isComposing: true }, { type: 'compositionend' }]),
+    ).toEqual([]);
+  });
+
+  it('swallows the Enter the IME sends after compositionend without starting again', () => {
+    const composing: NaturalRewriteKey = {
+      type: 'keydown',
+      key: 'Enter',
+      ctrlKey: true,
+      isComposing: true,
+    };
+    const end: NaturalRewriteKey = { type: 'compositionend' };
+    const again: NaturalRewriteKey = { type: 'keydown', key: 'Enter', ctrlKey: true };
+    let armed = false;
+    let canRewrite = true;
+    const seen = [composing, end, again].map((event) => {
+      const next = settleNaturalRewriteKey(armed, canRewrite, event);
+      armed = next.armed;
+      if (next.run) canRewrite = false;
+      return next;
+    });
+
+    expect(seen[0]).toEqual({ armed: true, run: false, preventDefault: false });
+    expect(seen[1]).toEqual({ armed: false, run: true, preventDefault: false });
+    expect(seen[2]).toEqual({ armed: false, run: false, preventDefault: true });
+    expect(
+      settleNaturalRewriteKey(false, true, { type: 'keydown', key: 'Enter', metaKey: true }),
+    ).toEqual({ armed: false, run: false, preventDefault: false });
+  });
 });
+
+function runsOf(events: NaturalRewriteKey[]): number[] {
+  let armed = false;
+  const runs: number[] = [];
+  events.forEach((event, index) => {
+    const next = reduceNaturalRewriteKey(armed, event);
+    if (next.run) runs.push(index);
+    armed = next.armed;
+  });
+  return runs;
+}
 
 describe('copying a translation', () => {
   it('copies the text when the clipboard accepts it', async () => {

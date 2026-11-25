@@ -191,6 +191,88 @@ describe('Control+Enter on a web page', () => {
     expect(called).toBe(false);
     stop();
   });
+
+  it('does not pull focus back when the reader moved to another field', async () => {
+    document.body.innerHTML = '<textarea id="a"></textarea><input id="b" />';
+    const box = document.querySelector('textarea')!;
+    const other = document.querySelector('input')!;
+    box.value = '오늘 늦어요';
+    let finish: (value: string) => void = () => {};
+    const stop = installNaturalFieldShortcut(document, {
+      labels,
+      rewrite: () => new Promise<string>((resolve) => (finish = resolve)),
+    });
+    press(box, { key: 'Enter', ctrlKey: true });
+    other.focus();
+    finish('Running late today');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(box.value).toBe('Running late today');
+    expect(document.activeElement).toBe(other);
+    stop();
+  });
+
+  function composingField(): { box: HTMLTextAreaElement; calls: string[]; stop: () => void } {
+    document.body.innerHTML = '<textarea></textarea>';
+    const box = document.querySelector('textarea')!;
+    box.value = '안녕하세요';
+    const calls: string[] = [];
+    const stop = installNaturalFieldShortcut(document, {
+      labels,
+      rewrite: (text) => {
+        calls.push(text);
+        return Promise.resolve('Hello');
+      },
+    });
+    return { box, calls, stop };
+  }
+
+  it('rewrites once after the last syllable is committed', async () => {
+    const { box, calls, stop } = composingField();
+    press(box, { key: 'Process', code: 'Enter', keyCode: 229, ctrlKey: true, isComposing: true });
+    expect(calls).toEqual([]);
+    box.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '요' }));
+    expect(calls).toEqual(['안녕하세요']);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(box.value).toBe('Hello');
+    stop();
+  });
+
+  it('swallows the Control+Enter the IME repeats after committing', () => {
+    const { box, calls, stop } = composingField();
+    press(box, { key: 'Enter', ctrlKey: true, isComposing: true });
+    box.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '요' }));
+    const repeated = press(box, { key: 'Enter', ctrlKey: true });
+    expect(repeated.defaultPrevented).toBe(true);
+    expect(calls).toEqual(['안녕하세요']);
+    stop();
+  });
+
+  it('starts on keyup when the IME sends no compositionend', () => {
+    const { box, calls, stop } = composingField();
+    press(box, { key: 'Enter', ctrlKey: true, isComposing: true });
+    box.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Enter', ctrlKey: true }));
+    expect(calls).toEqual(['안녕하세요']);
+    stop();
+  });
+
+  it('does not start when Control is released before the syllable is committed', () => {
+    const { box, calls, stop } = composingField();
+    press(box, { key: 'Enter', ctrlKey: true, isComposing: true });
+    box.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
+    box.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '요' }));
+    expect(calls).toEqual([]);
+    stop();
+  });
+
+  it('leaves Command+Enter alone while composing', () => {
+    const { box, calls, stop } = composingField();
+    press(box, { key: 'Enter', metaKey: true, isComposing: true });
+    box.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '요' }));
+    expect(calls).toEqual([]);
+    stop();
+  });
 });
 
 describe('the webpage rewrite request', () => {
