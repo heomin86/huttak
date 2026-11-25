@@ -73,7 +73,9 @@ describe('natural American English prompts', () => {
     );
     expect(cleanNaturalAmericanOutput('Sounds good.')).toBe('Sounds good.');
     expect(cleanNaturalAmericanOutput('I said "hello" to them.')).toBe('I said "hello" to them.');
-    expect(cleanNaturalAmericanOutput('\u201CThanks for waiting.\u201D')).toBe('Thanks for waiting.');
+    expect(cleanNaturalAmericanOutput('\u201CThanks for waiting.\u201D')).toBe(
+      'Thanks for waiting.',
+    );
     expect(cleanNaturalAmericanOutput("'I can't make it.'")).toBe("I can't make it.");
     expect(cleanNaturalAmericanOutput('「Thanks for waiting.」')).toBe('Thanks for waiting.');
   });
@@ -98,7 +100,9 @@ describe('natural American English prompts', () => {
     expect(cleanNaturalAmericanOutput('\u2018The dogs\u2019 toys are by the door.\u2019')).toBe(
       'The dogs\u2019 toys are by the door.',
     );
-    expect(cleanNaturalAmericanOutput("'Those belong to the dogs''")).toBe("Those belong to the dogs'");
+    expect(cleanNaturalAmericanOutput("'Those belong to the dogs''")).toBe(
+      "Those belong to the dogs'",
+    );
     const speech = "'The dogs,' she said. 'Stay.'";
     expect(cleanNaturalAmericanOutput(speech)).toBe(speech);
   });

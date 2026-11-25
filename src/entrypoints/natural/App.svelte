@@ -18,9 +18,10 @@
   import {
     MAX_TYPED_CHARS,
     copyTranslation,
-    isNaturalRewriteShortcut,
     normalizeTypedInput,
+    reduceNaturalRewriteKey,
     typedReadiness,
+    type NaturalRewriteKey,
     type TypedReadiness,
   } from '@/shared/typed-translation';
   import { naturalEngine } from './engine';
@@ -36,6 +37,8 @@
   let downloadBusy = $state(false);
   let downloadFailed = $state(false);
   let abortController = $state<AbortController | null>(null);
+  /** Control+Enter arrived while Hangul was still composing. */
+  let rewriteArmed = $state(false);
 
   let trimmed = $derived(normalizeTypedInput(sourceText));
   let tooLong = $derived(trimmed.length > MAX_TYPED_CHARS);
@@ -135,11 +138,41 @@
     translating = false;
   }
 
-  function onSourceKeydown(event: KeyboardEvent) {
-    if (!isNaturalRewriteShortcut(event)) return;
-    if (!canRewrite) return;
-    event.preventDefault();
+  function applyRewriteKey(event: NaturalRewriteKey, native?: Event) {
+    const next = reduceNaturalRewriteKey(rewriteArmed, event);
+    rewriteArmed = next.armed;
+    if (!next.run || !canRewrite) return;
+    if (event.type === 'keydown') native?.preventDefault();
     void rewriteKorean();
+  }
+
+  function keyboardRewriteEvent(
+    type: 'keydown' | 'keyup',
+    event: KeyboardEvent,
+  ): NaturalRewriteKey {
+    return {
+      type,
+      key: event.key,
+      code: event.code,
+      keyCode: event.keyCode,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      altKey: event.altKey,
+      shiftKey: event.shiftKey,
+      isComposing: event.isComposing,
+    };
+  }
+
+  function onSourceKeydown(event: KeyboardEvent) {
+    applyRewriteKey(keyboardRewriteEvent('keydown', event), event);
+  }
+
+  function onSourceKeyup(event: KeyboardEvent) {
+    applyRewriteKey(keyboardRewriteEvent('keyup', event), event);
+  }
+
+  function onSourceCompositionEnd() {
+    applyRewriteKey({ type: 'compositionend' });
   }
 
   async function copyResult() {
@@ -232,7 +265,9 @@
           aria-describedby="natural-counter"
           spellcheck="false"
           placeholder={t('naturalPlaceholder')}
-          onkeydown={onSourceKeydown}></textarea>
+          oncompositionend={onSourceCompositionEnd}
+          onkeydown={onSourceKeydown}
+          onkeyup={onSourceKeyup}></textarea>
         <div class="pane-foot">
           <p id="natural-counter" class="counter" class:over={tooLong}>
             {t('typedCounter', [String(trimmed.length), String(MAX_TYPED_CHARS)])}
