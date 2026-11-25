@@ -1,0 +1,222 @@
+// @vitest-environment happy-dom
+import { describe, expect, it } from 'vitest';
+import { NATURAL_AMERICAN_TASK, type Engine, type TranslateOptions } from '@/engine/types';
+import {
+  applyNaturalFieldResult,
+  containsHangul,
+  installNaturalFieldShortcut,
+  readNaturalFieldDraft,
+} from '@/dom/natural-field';
+import { collectNaturalRewrite } from '@/dom/natural-rewrite';
+
+const labels = { running: 'Rewriting…', failed: 'Failed' };
+
+function press(target: HTMLElement, init: KeyboardEventInit): KeyboardEvent {
+  target.focus();
+  const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+  target.dispatchEvent(event);
+  return event;
+}
+
+describe('Hangul in a page field', () => {
+  it('recognizes syllables and jamo and ignores Latin text', () => {
+    expect(containsHangul('오늘 늦을 것 같아요')).toBe(true);
+    expect(containsHangul('ㄱ')).toBe(true);
+    expect(containsHangul('Sounds good')).toBe(false);
+  });
+
+  it('reads the whole field when the caret is in Korean', () => {
+    document.body.innerHTML = '<textarea id="box"></textarea>';
+    const box = document.querySelector('textarea')!;
+    box.value = '  오늘 회의가 길어요.  ';
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
+
+    const draft = readNaturalFieldDraft(document, box);
+    expect(draft?.mode).toBe('value');
+    expect(draft?.text).toBe('오늘 회의가 길어요.');
+    expect(draft?.raw).toBe('  오늘 회의가 길어요.  ');
+  });
+
+  it('reads only a Hangul selection', () => {
+    document.body.innerHTML = '<textarea id="box"></textarea>';
+    const box = document.querySelector('textarea')!;
+    box.value = 'Hello 오늘 늦어요';
+    box.focus();
+    box.setSelectionRange(6, box.value.length);
+
+    const draft = readNaturalFieldDraft(document, box);
+    expect(draft?.mode).toBe('selection');
+    expect(draft?.text).toBe('오늘 늦어요');
+    expect(draft?.selectionStart).toBe(6);
+  });
+
+  it('leaves an English field and a password alone', () => {
+    document.body.innerHTML = '<textarea id="note"></textarea><input id="secret" type="password">';
+    const note = document.querySelector('textarea')!;
+    note.value = 'See you tomorrow';
+    note.focus();
+    expect(readNaturalFieldDraft(document, note)).toBeNull();
+
+    const secret = document.querySelector('input')!;
+    secret.value = '비밀번호';
+    secret.focus();
+    expect(readNaturalFieldDraft(document, secret)).toBeNull();
+  });
+
+  it('does not take a non-Korean selection inside a Korean field', () => {
+    document.body.innerHTML = '<textarea></textarea>';
+    const box = document.querySelector('textarea')!;
+    box.value = '오늘 Hello';
+    box.focus();
+    box.setSelectionRange(3, box.value.length);
+    expect(readNaturalFieldDraft(document, box)).toBeNull();
+  });
+});
+
+describe('writing the English back', () => {
+  it('replaces a textarea and notifies the page', () => {
+    document.body.innerHTML = '<textarea></textarea>';
+    const box = document.querySelector('textarea')!;
+    box.value = '오늘 늦어요';
+    box.focus();
+    const draft = readNaturalFieldDraft(document, box);
+    const inputs: Event[] = [];
+    box.addEventListener('input', (event) => inputs.push(event));
+
+    expect(draft && applyNaturalFieldResult(draft, ' Running late. ')).toBe(true);
+    expect(box.value).toBe('Running late.');
+    expect(inputs).toHaveLength(1);
+  });
+
+  it('replaces only the selected Korean', () => {
+    document.body.innerHTML = '<textarea></textarea>';
+    const box = document.querySelector('textarea')!;
+    box.value = 'Hello 오늘 늦어요';
+    box.focus();
+    box.setSelectionRange(6, box.value.length);
+    const draft = readNaturalFieldDraft(document, box);
+
+    expect(draft && applyNaturalFieldResult(draft, 'running late')).toBe(true);
+    expect(box.value).toBe('Hello running late');
+  });
+
+  it('does not overwrite Korean the reader changed while the rewrite was in flight', () => {
+    document.body.innerHTML = '<textarea></textarea>';
+    const box = document.querySelector('textarea')!;
+    box.value = '오늘 늦어요';
+    box.focus();
+    const draft = readNaturalFieldDraft(document, box)!;
+    box.value = '오늘 늦어요. 다시 쓸게요';
+
+    expect(applyNaturalFieldResult(draft, 'Running late.')).toBe(false);
+    expect(box.value).toBe('오늘 늦어요. 다시 쓸게요');
+  });
+
+  it('replaces a contenteditable field', () => {
+    document.body.innerHTML = '<div id="editor" contenteditable="true">오늘 늦어요</div>';
+    const editor = document.querySelector('div')!;
+    editor.focus();
+    const draft = readNaturalFieldDraft(document, editor);
+
+    expect(draft?.mode).toBe('value');
+    expect(draft && applyNaturalFieldResult(draft, 'Running late.')).toBe(true);
+    expect(editor.textContent).toBe('Running late.');
+  });
+});
+
+describe('Control+Enter on a web page', () => {
+  it('rewrites Korean and ignores Command+Enter and English', async () => {
+    document.body.innerHTML = '<textarea></textarea>';
+    const box = document.querySelector('textarea')!;
+    const seen: string[] = [];
+    const stop = installNaturalFieldShortcut(document, {
+      labels,
+      rewrite: (text) => {
+        seen.push(text);
+        return Promise.resolve('Running late.');
+      },
+    });
+
+    box.value = '오늘 늦어요';
+    const command = press(box, { key: 'Enter', metaKey: true });
+    expect(command.defaultPrevented).toBe(false);
+    expect(seen).toEqual([]);
+
+    const control = press(box, { key: 'Enter', ctrlKey: true });
+    expect(control.defaultPrevented).toBe(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(seen).toEqual(['오늘 늦어요']);
+    expect(box.value).toBe('Running late.');
+    expect(document.querySelector('sakutto-natural-status')).toBeNull();
+
+    box.value = 'See you';
+    const english = press(box, { key: 'Enter', ctrlKey: true });
+    expect(english.defaultPrevented).toBe(false);
+    stop();
+  });
+
+  it('shows a failure and keeps the Korean when the rewrite throws', async () => {
+    document.body.innerHTML = '<textarea></textarea>';
+    const box = document.querySelector('textarea')!;
+    box.value = '오늘 늦어요';
+    const stop = installNaturalFieldShortcut(document, {
+      labels,
+      rewrite: () => Promise.reject(new Error('offline')),
+    });
+
+    press(box, { key: 'Enter', ctrlKey: true });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(box.value).toBe('오늘 늦어요');
+    expect(document.querySelector('sakutto-natural-status')?.textContent).toBe('Failed');
+    stop();
+  });
+
+  it('ignores a key that is still composing', () => {
+    document.body.innerHTML = '<textarea></textarea>';
+    const box = document.querySelector('textarea')!;
+    box.value = '오늘';
+    let called = false;
+    const stop = installNaturalFieldShortcut(document, {
+      labels,
+      rewrite: () => {
+        called = true;
+        return Promise.resolve('Hi');
+      },
+    });
+    const event = press(box, { key: 'Enter', ctrlKey: true, isComposing: true });
+    expect(event.defaultPrevented).toBe(false);
+    expect(called).toBe(false);
+    stop();
+  });
+});
+
+describe('the webpage rewrite request', () => {
+  it('asks for natural American English and keeps the final text', async () => {
+    let options: TranslateOptions | null = null;
+    const engine: Engine = {
+      async *translate(segments, next) {
+        options = next;
+        yield { id: segments[0]!.id, textDelta: 'Run' };
+        yield { id: segments[0]!.id, textDelta: 'ning', restart: true };
+        yield { id: segments[0]!.id, final: 'Running late.' };
+      },
+    };
+
+    const result = await collectNaturalRewrite(
+      engine,
+      '  오늘 늦어요  ',
+      new AbortController().signal,
+      [{ source: '회의', target: 'the meeting' }],
+    );
+
+    expect(result).toBe('Running late.');
+    expect(options).not.toBeNull();
+    expect(options!.task).toBe(NATURAL_AMERICAN_TASK);
+    expect(options!.src).toBe('ko');
+    expect(options!.tgt).toBe('en');
+    expect(options!.glossary).toEqual([{ source: '회의', target: 'the meeting' }]);
+  });
+});

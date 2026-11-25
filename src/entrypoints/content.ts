@@ -4,6 +4,8 @@ import { CaptionSession, type CaptionLabels } from '@/captions/session';
 import { listPageBlocks } from '@/dom/blocks';
 import { detectDocumentLanguage } from '@/dom/detect';
 import { fakeTranslate } from '@/dom/fake-engine';
+import { installNaturalFieldShortcut } from '@/dom/natural-field';
+import { collectNaturalRewrite } from '@/dom/natural-rewrite';
 import type { OverlayLabels } from '@/dom/overlay';
 import { PageSession, preferencesFor } from '@/dom/session';
 import { loadSiteRule, pageHost, saveSiteRule, subscribeSiteRules } from '@/dom/sites';
@@ -98,6 +100,21 @@ export default defineContentScript({
     if (bridge.__sakuttoContentBridgeReady) return;
     if (pageHost(location.href) === null) return;
     bridge.__sakuttoContentBridgeReady = true;
+
+    const stopNaturalField = installNaturalFieldShortcut(document, {
+      labels: { running: t('naturalRunning'), failed: t('naturalFailed') },
+      rewrite: async (text, signal) => {
+        if (!__SAKUTTO_FAKE_ENGINE__) void requestEngineWarm();
+        const settings = await loadSettings();
+        return collectNaturalRewrite(
+          { translate: __SAKUTTO_FAKE_ENGINE__ ? fakeTranslate : translateViaBackground },
+          text,
+          signal,
+          settings.glossary,
+        );
+      },
+    });
+    document.defaultView?.addEventListener('pagehide', stopNaturalField, { once: true });
 
     const host = pageHost(location.href) ?? '';
     let allowSelectionShortcut = true;

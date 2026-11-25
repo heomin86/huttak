@@ -3,8 +3,8 @@ export type Formality = 'polite' | 'plain';
 export type EngineKind = 'plamo' | 'chrome' | 'local';
 
 /**
- * The separate box where the reader pastes Korean they wrote. Page translation never
- * sets this, so its prompt stays the ordinary one.
+ * Korean the reader wrote themselves, in the natural-English box or in a field on a
+ * web page. Page translation never sets this, so its prompt stays the ordinary one.
  */
 export const NATURAL_AMERICAN_TASK = 'natural-american' as const;
 
@@ -31,8 +31,9 @@ export interface TranslateOptions {
   /** Stream the first short piece before the rest of this call is batched. */
   eager?: boolean | undefined;
   /**
-   * Set only by the box that rewrites the reader's own Korean into American English.
-   * Absent on a page, a post, a caption and the general typed translator.
+   * Set when rewriting Korean the reader typed into American English, in the
+   * natural-English box or in a field on a web page. Absent on a page translation,
+   * a post, a caption and the general typed translator.
    */
   task?: TranslationTask | undefined;
 }
