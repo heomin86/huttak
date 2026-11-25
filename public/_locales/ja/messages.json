@@ -931,7 +931,7 @@
     "message": "書き換え中…"
   },
   "naturalRunHint": {
-    "message": "Ctrl+Enterでも書き換えます。Macでは⌘ではなくControl+Enterです。"
+    "message": "Ctrl+Enterでも書き換えます。Macでは⌘ではなくControl+Enterです。ウェブページの入力欄に韓国語があるときも、同じキーでその欄を書き換えます。"
   },
   "naturalFailed": {
     "message": "英語に書き換えられませんでした。入力した文章はそのままなので、もう一度試してください。"

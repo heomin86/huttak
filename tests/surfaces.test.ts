@@ -10,6 +10,7 @@ const typed = source('entrypoints/typed/App.svelte');
 const natural = source('entrypoints/natural/App.svelte');
 const popup = source('entrypoints/popup/App.svelte');
 const session = source('dom/session.ts');
+const content = source('entrypoints/content.ts');
 const modelManager = source('ui/ModelManager.svelte');
 
 /**
@@ -139,6 +140,8 @@ describe('natural American English input', () => {
     expect(session).not.toContain('natural-american');
     expect(typed).not.toContain('natural-american');
     expect(typed).not.toContain('NATURAL_AMERICAN_TASK');
+    expect(content).toContain('installNaturalFieldShortcut');
+    expect(content).toContain('collectNaturalRewrite');
   });
 
   it('rewrites with Control+Enter and does not take Command+Enter', () => {
