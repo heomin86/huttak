@@ -161,15 +161,20 @@ export function applyNaturalFieldResult(draft: NaturalFieldDraft, english: strin
   if (!field.isConnected) return false;
   const next = english.trim();
   if (next.length === 0) return false;
+  // Typing-style insertion needs the field focused and its text selected. When the reader
+  // has moved on to another field during the rewrite, focus and selection stay where they
+  // are and the text is written directly instead.
+  const stillFocused = focusedEditableField(field.ownerDocument.activeElement) === field;
 
   if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
     const start = draft.mode === 'selection' ? draft.selectionStart : 0;
     const end = draft.mode === 'selection' ? draft.selectionEnd : field.value.length;
     if (field.value.slice(start, end) !== draft.raw) return false;
     const expected = field.value.slice(0, start) + next + field.value.slice(end);
-    field.focus();
-    field.setSelectionRange(start, end);
-    if (insertAsTyping(field, next) && field.value === expected) return true;
+    if (stillFocused) {
+      field.setSelectionRange(start, end);
+      if (insertAsTyping(field, next) && field.value === expected) return true;
+    }
     if (field.value !== expected && field.value.slice(start, end) !== draft.raw) return false;
     if (draft.mode === 'selection') {
       const value =
@@ -198,8 +203,7 @@ export function applyNaturalFieldResult(draft: NaturalFieldDraft, english: strin
     target.selectNodeContents(field);
   }
   if (!target) return false;
-  if (selection) {
-    field.focus();
+  if (selection && stillFocused) {
     selection.removeAllRanges();
     selection.addRange(target);
     const before = plainText(field);

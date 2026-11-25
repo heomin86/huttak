@@ -192,6 +192,26 @@ describe('Control+Enter on a web page', () => {
     stop();
   });
 
+  it('does not pull focus back when the reader moved to another field', async () => {
+    document.body.innerHTML = '<textarea id="a"></textarea><input id="b" />';
+    const box = document.querySelector('textarea')!;
+    const other = document.querySelector('input')!;
+    box.value = '오늘 늦어요';
+    let finish: (value: string) => void = () => {};
+    const stop = installNaturalFieldShortcut(document, {
+      labels,
+      rewrite: () => new Promise<string>((resolve) => (finish = resolve)),
+    });
+    press(box, { key: 'Enter', ctrlKey: true });
+    other.focus();
+    finish('Running late today');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(box.value).toBe('Running late today');
+    expect(document.activeElement).toBe(other);
+    stop();
+  });
+
   function composingField(): { box: HTMLTextAreaElement; calls: string[]; stop: () => void } {
     document.body.innerHTML = '<textarea></textarea>';
     const box = document.querySelector('textarea')!;
