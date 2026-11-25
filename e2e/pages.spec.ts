@@ -2,8 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { loadExtension, type LoadedExtension } from './extension';
 import {
   FIXTURE_ORIGIN,
-  MARKER,
+  LANGUAGE_MARKER,
   commandPage,
+  expectPlamoText,
   readSiteDisplay,
   resetExtensionStorage,
   savePerf,
@@ -63,8 +64,7 @@ test.describe('in-page translation', () => {
       );
       expect(chromeBlocks).toEqual([]);
       await expect(page.locator('sakutto-note')).toHaveCount(0);
-      await expect(page.locator('#lead')).toHaveAttribute('data-sakutto-engine', 'plamo');
-      await expect(page.locator('#lead')).toContainText(MARKER);
+      await expectPlamoText(page.locator('#lead'));
     } finally {
       await page.close();
     }
@@ -82,9 +82,10 @@ test.describe('in-page translation', () => {
   test('translates an article, keeps links, and restores the original text', async () => {
     const page = await openFixture('/article.html');
     try {
-      await expect(page.locator('#lead')).toContainText(MARKER);
+      await expectPlamoText(page.locator('#lead'));
       await expect(page.locator('#link a')).toHaveAttribute('href', '/docs.html');
-      await expect(page.locator('#link a')).toContainText(`${MARKER}ドキュメント`);
+      await expect(page.locator('#link a')).toHaveText('ドキュメント');
+      await expectPlamoText(page.locator('#link'));
       // Page text comes from PLaMo only: no built-in badge, and no block is stamped as a
       // Chrome translation.
       await expect(page.locator('sakutto-note')).toHaveCount(0);
@@ -104,9 +105,10 @@ test.describe('in-page translation', () => {
   test('leaves code blocks untouched', async () => {
     const page = await openFixture('/docs.html');
     try {
-      await expect(page.locator('h1')).toContainText(MARKER);
+      await expectPlamoText(page.locator('h1'));
       await expect(page.locator('code')).toHaveText('const answer = 42;');
-      await expect(page.locator('pre')).not.toContainText(MARKER);
+      await expect(page.locator('pre')).not.toContainText(LANGUAGE_MARKER);
+      await expect(page.locator('pre')).not.toHaveAttribute('data-sakutto-engine', 'plamo');
     } finally {
       await page.close();
     }
@@ -115,8 +117,8 @@ test.describe('in-page translation', () => {
   test('translates labels and leaves form values alone', async () => {
     const page = await openFixture('/form.html');
     try {
-      await expect(page.locator('label')).toContainText(MARKER);
-      await expect(page.locator('td').first()).toContainText(MARKER);
+      await expectPlamoText(page.locator('label'));
+      await expectPlamoText(page.locator('td').first());
       await expect(page.locator('#name')).toHaveValue('secret');
       await expect(page.locator('#price')).toHaveValue('100');
       await expect(page.locator('textarea')).toHaveValue('memo');
@@ -129,7 +131,8 @@ test.describe('in-page translation', () => {
     const page = await openFixture('/spa.html');
     try {
       await page.locator('#more').click();
-      await expect(page.locator('#added')).toContainText(`${MARKER}追加された段落です。`);
+      await expectPlamoText(page.locator('#added'));
+      await expect(page.locator('#added')).toContainText('追加された段落です。');
     } finally {
       await page.close();
     }
@@ -138,7 +141,7 @@ test.describe('in-page translation', () => {
   test('translates a dark page without covering it', async () => {
     const page = await openFixture('/dark.html');
     try {
-      await expect(page.locator('#lead')).toContainText(MARKER);
+      await expectPlamoText(page.locator('#lead'));
       const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
       expect(background).toBe('rgb(17, 17, 17)');
     } finally {
@@ -150,8 +153,8 @@ test.describe('in-page translation', () => {
     const page = await openFixture('/long.html');
     try {
       await page.locator('#p39').scrollIntoViewIfNeeded();
-      await expect(page.locator('#p0')).toContainText(MARKER);
-      await expect(page.locator('#p39')).toContainText(MARKER);
+      await expectPlamoText(page.locator('#p0'));
+      await expectPlamoText(page.locator('#p39'));
       await savePerf('long', page);
     } finally {
       await page.close();
@@ -161,7 +164,8 @@ test.describe('in-page translation', () => {
   test('translates a Chinese page', async () => {
     const page = await openFixture('/cjk.html');
     try {
-      await expect(page.locator('#lead')).toContainText(`${MARKER}今天天气很好。`);
+      await expectPlamoText(page.locator('#lead'));
+      await expect(page.locator('#lead')).toContainText('今天天气很好。');
     } finally {
       await page.close();
     }
@@ -170,11 +174,11 @@ test.describe('in-page translation', () => {
   test('translates a Wikipedia-like article without leaking markup', async () => {
     const page = await openFixture('/wiki.html');
     try {
-      await expect(page.locator('#lead')).toContainText('§ja§');
+      await expectPlamoText(page.locator('#lead'));
       await expect(page.locator('#lead .IPA')).toHaveText('oːsaka');
       await expect(page.locator('#lead sup')).toHaveText('[1]');
       await expect(page.locator('#lead a')).toHaveAttribute('href', '/wiki/Designated_city');
-      await expect(page.locator('#mixed')).toContainText('§ja§');
+      await expectPlamoText(page.locator('#mixed'));
       await expect(page.locator('#mixed')).toContainText('大坂');
       const universities = await page.locator('#universities').innerText();
       expect(universities.indexOf('Osaka University')).toBeLessThan(universities.indexOf(','));
@@ -182,7 +186,7 @@ test.describe('in-page translation', () => {
         universities.indexOf('Osaka Metropolitan University'),
       );
       expect(await page.locator('body').innerHTML()).not.toMatch(/<i\d/);
-      await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
+      await expect(page.locator('html')).toHaveAttribute('lang', 'ko');
       await expect(page.locator('html')).toHaveAttribute('data-sakutto-progress', /^\d+\/\d+$/);
 
       const raw = await page.evaluate(
@@ -193,14 +197,15 @@ test.describe('in-page translation', () => {
       expect((perf.firstTextAt ?? 0) - perf.startedAt).toBeLessThan(2000);
 
       await commandPage(extension.worker, page, 'bilingual');
-      await expect(page.locator('#lead sakutto-line')).toContainText('§ja§');
+      await expect(page.locator('#lead sakutto-line')).toContainText('designated city');
+      await expect(page.locator('#lead sakutto-line')).not.toContainText(LANGUAGE_MARKER);
       await expect(page.locator('nav sakutto-line')).toHaveCount(0);
       await expect(page.locator('aside sakutto-line')).toHaveCount(0);
 
       await commandPage(extension.worker, page, 'restore');
       await expect(page.locator('html')).toHaveAttribute('lang', 'en');
       await expect(page.locator('#lead')).toContainText('designated city');
-      await expect(page.locator('#lead')).not.toContainText('§ja§');
+      await expect(page.locator('#lead')).not.toContainText(LANGUAGE_MARKER);
     } finally {
       await page.close();
     }
@@ -260,8 +265,12 @@ test.describe('in-page translation', () => {
       );
 
       // Row text is PLaMo's, and no row was stamped as a Chrome translation. The fixture is
-      // English, so the target adjusts to Japanese and PLaMo's fake marker is `§ja§`.
-      await expect(page.locator('#rows > li').first()).toContainText('§ja§');
+      // English, so the target adjusts to Korean. Cells are translated on their own, and the
+      // fake engine's language tag is removed before the row is shown.
+      await expect(page.locator('#rows > li').first()).not.toContainText(LANGUAGE_MARKER);
+      await expect(
+        page.locator('#rows > li').first().locator('[data-sakutto-engine="plamo"]').first(),
+      ).toBeAttached();
       await expect(page.locator('[data-sakutto-engine="chrome"]')).toHaveCount(0);
       await expect(page.locator('sakutto-note')).toHaveCount(0);
       await expect(page.locator('html')).toHaveAttribute('data-sakutto-state', 'translated');
@@ -304,7 +313,8 @@ test.describe('in-page translation', () => {
     const page = await openFixture('/article.html');
     try {
       await commandPage(extension.worker, page, 'bilingual');
-      await expect(page.locator('#lead sakutto-line')).toContainText(MARKER);
+      await expect(page.locator('#lead sakutto-line')).toContainText('今日はよく晴れています。');
+      await expect(page.locator('#lead sakutto-line')).not.toContainText(LANGUAGE_MARKER);
       await expect(page.locator('#lead')).toContainText('今日はよく晴れています。');
       await expect(page.locator('sakutto-note')).toHaveCount(0);
       expect(await readSiteDisplay(extension.worker)).toBe('bilingual');
@@ -312,7 +322,8 @@ test.describe('in-page translation', () => {
       await page.reload();
       await commandPage(extension.worker, page, 'toggle');
       await waitTranslated(page);
-      await expect(page.locator('#lead sakutto-line')).toContainText(MARKER);
+      await expect(page.locator('#lead sakutto-line')).toContainText('今日はよく晴れています。');
+      await expect(page.locator('#lead sakutto-line')).not.toContainText(LANGUAGE_MARKER);
       await expect(page.locator('#lead')).toContainText('今日はよく晴れています。');
       await expect(page.locator('sakutto-note')).toHaveCount(0);
     } finally {
@@ -340,12 +351,12 @@ test.describe('faded translation and skipped sidebar', () => {
     try {
       // Sidebar metadata and short labels used to be dropped, leaving a finished-looking
       // page with an English column beside it.
-      await expect(page.locator('#downloads')).toContainText(MARKER);
-      await expect(page.locator('#size')).toContainText(MARKER);
-      await expect(page.locator('#spaces')).toContainText(MARKER);
-      await expect(page.locator('#docs')).toContainText(MARKER);
-      await expect(page.locator('#lead')).toContainText(MARKER);
-      await expect(page.locator('#shell')).toContainText(MARKER);
+      await expectPlamoText(page.locator('#downloads'));
+      await expectPlamoText(page.locator('#size'));
+      await expectPlamoText(page.locator('#spaces'));
+      await expectPlamoText(page.locator('#docs'));
+      await expectPlamoText(page.locator('#lead'));
+      await expectPlamoText(page.locator('#shell'));
 
       // Literal content stays literal.
       await expect(page.locator('#code')).toHaveText('model = load("weights")');
@@ -386,7 +397,8 @@ test.describe('faded translation and skipped sidebar', () => {
 
       await commandPage(extension.worker, page, 'bilingual');
       const line = page.locator('#lead sakutto-line');
-      await expect(line).toContainText(MARKER);
+      await expect(line).toContainText('autoregressive model');
+      await expect(line).not.toContainText(LANGUAGE_MARKER);
       expect(
         await line.evaluate((element) => ({
           opacity: getComputedStyle(element).opacity,
@@ -404,10 +416,11 @@ test.describe('faded translation and skipped sidebar', () => {
     // and the sidebar in English while the bar read "This page is translated".
     const page = await openFixture('/app-shell.html');
     try {
-      await expect(page.locator('#lead')).toContainText(MARKER);
-      await expect(page.locator('#title')).toContainText(MARKER);
-      await expect(page.locator('nav a').first()).toContainText(MARKER);
-      await expect(page.locator('#downloads')).toContainText(MARKER);
+      await expectPlamoText(page.locator('#lead'));
+      await expectPlamoText(page.locator('#title'));
+      await expect(page.locator('nav a').first()).not.toContainText(LANGUAGE_MARKER);
+      await expectPlamoText(page.locator('nav li').first());
+      await expectPlamoText(page.locator('#downloads'));
       await expect(page.locator('html')).toHaveAttribute('data-sakutto-state', 'translated');
     } finally {
       await page.close();
@@ -420,7 +433,7 @@ test.describe('faded translation and skipped sidebar', () => {
     // instead of the glyph.
     const page = await openFixture('/app-shell.html');
     try {
-      await expect(page.locator('#icon-row')).toContainText(MARKER);
+      await expectPlamoText(page.locator('#icon-row'));
       await expect(page.locator('#icon-row .material-symbols-outlined')).toHaveText('search');
     } finally {
       await page.close();
@@ -433,7 +446,7 @@ test.describe('faded translation and skipped sidebar', () => {
     // hidden content appear as soon as translation started.
     const page = await openFixture('/app-shell.html');
     try {
-      await expect(page.locator('#downloads')).toContainText(MARKER);
+      await expectPlamoText(page.locator('#downloads'));
       const opacity = await page.evaluate(() => {
         const slide = document.querySelector<HTMLElement>('#slide');
         const disabled = document.querySelector<HTMLElement>('#disabled');

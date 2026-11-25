@@ -73,9 +73,17 @@ describe('natural American English prompts', () => {
     );
     expect(cleanNaturalAmericanOutput('Sounds good.')).toBe('Sounds good.');
     expect(cleanNaturalAmericanOutput('I said "hello" to them.')).toBe('I said "hello" to them.');
-    expect(cleanNaturalAmericanOutput('\u201CThanks for waiting.\u201D')).toBe('Thanks for waiting.');
+    expect(cleanNaturalAmericanOutput('\u201CThanks for waiting.\u201D')).toBe(
+      'Thanks for waiting.',
+    );
     expect(cleanNaturalAmericanOutput("'I can't make it.'")).toBe("I can't make it.");
     expect(cleanNaturalAmericanOutput('「Thanks for waiting.」')).toBe('Thanks for waiting.');
+    expect(cleanNaturalAmericanOutput('§en§Thanks for waiting.')).toBe('Thanks for waiting.');
+    expect(cleanNaturalAmericanOutput('§ko§Translation: "Thanks for waiting."')).toBe(
+      'Thanks for waiting.',
+    );
+    expect(cleanNaturalAmericanOutput('§en§')).toBe('');
+    expect(cleanNaturalAmericanOutput('See § 3 of the act.')).toBe('See § 3 of the act.');
   });
 
   it('keeps dialogue that opens with a quote and later closes another', () => {
@@ -98,7 +106,9 @@ describe('natural American English prompts', () => {
     expect(cleanNaturalAmericanOutput('\u2018The dogs\u2019 toys are by the door.\u2019')).toBe(
       'The dogs\u2019 toys are by the door.',
     );
-    expect(cleanNaturalAmericanOutput("'Those belong to the dogs''")).toBe("Those belong to the dogs'");
+    expect(cleanNaturalAmericanOutput("'Those belong to the dogs''")).toBe(
+      "Those belong to the dogs'",
+    );
     const speech = "'The dogs,' she said. 'Stay.'";
     expect(cleanNaturalAmericanOutput(speech)).toBe(speech);
   });

@@ -21,6 +21,23 @@ describe('stream commit', () => {
     expect(commitPiece('Hello', '안녕하세요 끝', '안녕하세요')).toBe('안녕하세요 끝');
     expect(commitPiece('Hello', '짧은', '더 긴 최종 번역입니다')).toBe('더 긴 최종 번역입니다');
   });
+
+  it('strips a language marker, including one in a kept tail, and leaves the source when that is all there was', () => {
+    const source = 'The meeting starts at nine.';
+    expect(commitPiece(source, '§ko§', '§ko§')).toBe(source);
+    expect(commitPiece(source, '§en§', '')).toBe(source);
+    expect(commitPiece(source, '', '§ja§')).toBe(source);
+    expect(
+      commitPiece(source, '§ko§회의는 9시에 시작합니다.', '§ko§회의는 9시에 시작합니다.'),
+    ).toBe('회의는 9시에 시작합니다.');
+    expect(commitPiece(source, '§en§Hello there.', '§en§Hello there.')).toBe('Hello there.');
+    expect(commitPiece('Hello', '안녕하세요 끝§en§', '안녕하세요')).toBe('안녕하세요 끝');
+    expect(commitPiece('Hello', '§ko§안녕하세요 끝', '안녕하세요')).toBe('안녕하세요 끝');
+    expect(commitPiece(source, 'See § 3 of the act.', 'See § 3 of the act.')).toBe(
+      'See § 3 of the act.',
+    );
+    expect(commitPiece(source, '', '')).toBe('');
+  });
 });
 
 describe('line breaks between pieces', () => {

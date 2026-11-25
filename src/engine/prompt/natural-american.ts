@@ -1,3 +1,4 @@
+import { stripLanguageMarkers } from '../text/language-marker';
 import type { GlossaryEntry } from '../types';
 import { buildTranslationPrompt } from './pfml3';
 
@@ -86,7 +87,7 @@ const WRAPPING_QUOTES: readonly (readonly [string, string])[] = [
  * dialogue that opens with a quote and later closes another is not a wrapper.
  */
 export function cleanNaturalAmericanOutput(value: string): string {
-  let text = value.trim();
+  let text = stripLanguageMarkers(value).trim();
   for (let pass = 0; pass < 4; pass += 1) {
     const before = text;
     if (text.startsWith(NATURAL_AMERICAN_INSTRUCTION)) {
@@ -100,7 +101,7 @@ export function cleanNaturalAmericanOutput(value: string): string {
     text = stripWrappingQuotes(text);
     if (text === before) break;
   }
-  return text.trim();
+  return stripLanguageMarkers(text).trim();
 }
 
 /** Straight apostrophe and the curly apostrophe models use inside contractions. */

@@ -125,4 +125,16 @@ describe('PFML3 prompt', () => {
     expect(cleanModelOutput(' こんにちは <|plamo:tag|>')).toBe('こんにちは');
     expect(cleanModelOutput('Hello<|plamo:bos|>')).toBe('Hello');
   });
+
+  it('removes a language marker and keeps a bare section sign', () => {
+    expect(cleanModelOutput('§ko§')).toBe('');
+    expect(cleanModelOutput('§en§')).toBe('');
+    expect(cleanModelOutput('§ja§')).toBe('');
+    expect(cleanModelOutput('§ko§안녕하세요')).toBe('안녕하세요');
+    expect(cleanModelOutput('§en§Hello there.')).toBe('Hello there.');
+    expect(cleanModelOutput('§zh-hans§你好')).toBe('你好');
+    expect(cleanModelOutput('§ko§こんにちは <|plamo:tag|>')).toBe('こんにちは');
+    expect(cleanModelOutput('See § 3 of the act.')).toBe('See § 3 of the act.');
+    expect(cleanModelOutput('The sign § stands alone.')).toBe('The sign § stands alone.');
+  });
 });

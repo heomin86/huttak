@@ -4,6 +4,7 @@ import {
   buildNaturalAmericanMessages,
   cleanNaturalAmericanOutput,
 } from '../prompt/natural-american';
+import { stripLanguageMarkers } from '../text/language-marker';
 import {
   NATURAL_AMERICAN_TASK,
   type GlossaryEntry,
@@ -146,6 +147,16 @@ export function buildLocalMessages(input: LocalPromptInput): ChatMessage[] {
 }
 
 const END_MARKERS = ['<|eot_id|>', '<|end_of_text|>', '<|im_end|>', '<|endoftext|>'];
+
+/**
+ * A language tag can arrive split across tokens (`§`, then `ko§`). Hold that unfinished
+ * tail back so a delta never shows it. The finished tag is removed with the rest.
+ */
+const OPEN_LANGUAGE_MARKER = /§(?:[a-z]{0,3}(?:-[a-z]{0,4})?)?$/;
+
+function stableStreamText(text: string): string {
+  return stripLanguageMarkers(stripReasoning(text)).replace(OPEN_LANGUAGE_MARKER, '');
+}
 
 /**
  * Drops a reasoning block that some models print before the answer, and any end-of-turn
@@ -366,16 +377,16 @@ export class LocalServerEngine implements IdentifiedEngine {
       }
 
       let text = '';
-      let shown = 0;
+      let shown = '';
       try {
         for await (const delta of streamDeltas(response.body)) {
           text += delta;
           // Hold streamed text back while a reasoning block may still be open.
           if (text.trimStart().startsWith('<think>') && !text.includes('</think>')) continue;
-          const visible = stripReasoning(text);
-          if (visible.length > shown) {
-            yield { id: segment.id, textDelta: visible.slice(shown), engine: this.kind };
-            shown = visible.length;
+          const visible = stableStreamText(text);
+          if (visible.startsWith(shown) && visible.length > shown.length) {
+            yield { id: segment.id, textDelta: visible.slice(shown.length), engine: this.kind };
+            shown = visible;
           }
         }
       } catch (error) {
@@ -383,13 +394,21 @@ export class LocalServerEngine implements IdentifiedEngine {
         throw error;
       }
       const answer = stripReasoning(text);
+      const stripped = stripLanguageMarkers(answer).trim();
+      const cleaned = natural
+        ? cleanNaturalAmericanOutput(answer)
+        : options.tgt === 'ko'
+          ? fixKoreanOutput(stripped)
+          : stripped;
+      // A tag with no translation must not replace the sentence with the tag or with nothing.
+      // The natural rewrite keeps an empty result, which leaves the Korean the reader typed.
+      const finalText =
+        !natural && cleaned.trim().length === 0 && answer.trim().length > 0
+          ? segment.text
+          : cleaned;
       yield {
         id: segment.id,
-        final: natural
-          ? cleanNaturalAmericanOutput(answer)
-          : options.tgt === 'ko'
-            ? fixKoreanOutput(answer)
-            : answer,
+        final: finalText,
         engine: this.kind,
       };
     }

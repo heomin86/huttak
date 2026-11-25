@@ -1,8 +1,16 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import type { Page, Worker } from '@playwright/test';
+import { expect, type Locator, type Page, type Worker } from '@playwright/test';
 
 export const FIXTURE_ORIGIN = 'http://127.0.0.1:4173';
-export const MARKER = '§en§';
+
+/** A leaked `§ko§` / `§en§` tag. A bare section sign does not match. */
+export const LANGUAGE_MARKER = /§[a-z]{2,3}(?:-[a-z]{4})?§/;
+
+/** The block was translated by PLaMo, and no language tag remains in its text. */
+export async function expectPlamoText(locator: Locator): Promise<void> {
+  await expect(locator).toHaveAttribute('data-sakutto-engine', 'plamo');
+  await expect(locator).not.toContainText(LANGUAGE_MARKER);
+}
 
 interface ExtensionChrome {
   tabs: {

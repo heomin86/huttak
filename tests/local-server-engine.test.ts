@@ -9,7 +9,12 @@ import {
   stripReasoning,
 } from '@/engine/local/server-engine';
 import { SwitchingEngine } from '@/engine/local/switching-engine';
-import type { IdentifiedEngine, TranslateOptions, TranslationChunk } from '@/engine/types';
+import {
+  NATURAL_AMERICAN_TASK,
+  type IdentifiedEngine,
+  type TranslateOptions,
+  type TranslationChunk,
+} from '@/engine/types';
 
 function sse(parts: readonly string[]): Response {
   const encoder = new TextEncoder();
@@ -122,6 +127,56 @@ describe('local server engine', () => {
     expect(chunks.at(-1)).toEqual({ id: 'a', final: '변경 사항을 저장했습니다.', engine: 'local' });
     const streamed = chunks.map((chunk) => chunk.textDelta ?? '').join('');
     expect(streamed).toBe('변경 사항을 저장했습니다.');
+  });
+
+  it('strips a language marker from the stream and the final text', async () => {
+    const engine = new LocalServerEngine({
+      baseUrl: 'http://127.0.0.1:8080/',
+      fetch: (async () => sse(['§ko§변경 ', '사항을 저장했습니다.'])) as unknown as typeof fetch,
+    });
+    const source = 'Your changes have been saved.';
+    const chunks = await collect(engine.translate([{ id: 'a', text: source }], options()));
+    const streamed = chunks.map((chunk) => chunk.textDelta ?? '').join('');
+    expect(streamed).toBe('변경 사항을 저장했습니다.');
+    expect(chunks.at(-1)?.final).toBe('변경 사항을 저장했습니다.');
+
+    const glued = new LocalServerEngine({
+      baseUrl: 'http://127.0.0.1:8080/',
+      fetch: (async () => sse(['§en§Hello there.'])) as unknown as typeof fetch,
+    });
+    const english = await collect(
+      glued.translate([{ id: 'a', text: source }], options({ tgt: 'en' })),
+    );
+    expect(english.at(-1)?.final).toBe('Hello there.');
+
+    const section = new LocalServerEngine({
+      baseUrl: 'http://127.0.0.1:8080/',
+      fetch: (async () => sse(['See § 3 of the act.'])) as unknown as typeof fetch,
+    });
+    const kept = await collect(
+      section.translate([{ id: 'a', text: source }], options({ tgt: 'en' })),
+    );
+    expect(kept.at(-1)?.final).toBe('See § 3 of the act.');
+
+    const onlyMarker = new LocalServerEngine({
+      baseUrl: 'http://127.0.0.1:8080/',
+      fetch: (async () => sse(['§ko§'])) as unknown as typeof fetch,
+    });
+    const restored = await collect(onlyMarker.translate([{ id: 'a', text: source }], options()));
+    expect(restored.map((chunk) => chunk.textDelta ?? '').join('')).toBe('');
+    expect(restored.at(-1)?.final).toBe(source);
+
+    const natural = new LocalServerEngine({
+      baseUrl: 'http://127.0.0.1:8080/',
+      fetch: (async () => sse(['§en§Thanks for waiting.'])) as unknown as typeof fetch,
+    });
+    const rewritten = await collect(
+      natural.translate(
+        [{ id: 'a', text: '기다려 주셔서 감사합니다.' }],
+        options({ src: 'ko', tgt: 'en', task: NATURAL_AMERICAN_TASK }),
+      ),
+    );
+    expect(rewritten.at(-1)?.final).toBe('Thanks for waiting.');
   });
 
   it('keeps the last event when the stream ends without a newline', async () => {
