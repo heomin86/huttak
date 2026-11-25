@@ -104,7 +104,7 @@ export function isTranslateShortcut(event: {
  * Plain Enter still inserts a line break.
  */
 export function isNaturalRewriteShortcut(event: {
-  key: string;
+  key?: string;
   ctrlKey?: boolean;
   metaKey?: boolean;
   altKey?: boolean;
@@ -115,6 +115,86 @@ export function isNaturalRewriteShortcut(event: {
   if (event.isComposing === true) return false;
   if (event.altKey === true || event.shiftKey === true || event.metaKey === true) return false;
   return event.ctrlKey === true;
+}
+
+export interface NaturalRewriteKey {
+  type: 'keydown' | 'keyup' | 'compositionend';
+  key?: string;
+  code?: string;
+  keyCode?: number;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  altKey?: boolean;
+  shiftKey?: boolean;
+  isComposing?: boolean;
+}
+
+function blocksNaturalRewrite(event: NaturalRewriteKey): boolean {
+  return event.altKey === true || event.shiftKey === true || event.metaKey === true;
+}
+
+/** Enter, the numpad key, or a composing event whose physical key is still Enter. */
+function isEnterIdentity(event: NaturalRewriteKey): boolean {
+  return (
+    event.key === 'Enter' ||
+    event.code === 'Enter' ||
+    event.code === 'NumpadEnter' ||
+    event.keyCode === 13
+  );
+}
+
+/**
+ * Control+Enter while the IME still owns the keydown. `key` is often Enter with
+ * `isComposing`, or Process / 229 while `code` stays Enter. Command stays rejected.
+ */
+function isComposingControlEnter(event: NaturalRewriteKey): boolean {
+  if (event.ctrlKey !== true || blocksNaturalRewrite(event) || !isEnterIdentity(event))
+    return false;
+  return event.isComposing === true || event.key !== 'Enter' || event.keyCode === 229;
+}
+
+/**
+ * Control+Enter starts one rewrite. A keydown the IME is still composing does not: the
+ * syllable is confirmed, and the rewrite waits for compositionend or the following keyup.
+ * Text that is already committed still starts on that keydown. Command+Enter never starts.
+ */
+export function reduceNaturalRewriteKey(
+  armed: boolean,
+  event: NaturalRewriteKey,
+): { armed: boolean; run: boolean } {
+  if (event.type === 'keydown') {
+    if (isNaturalRewriteShortcut(event)) return { armed: false, run: true };
+    if (isComposingControlEnter(event)) return { armed: true, run: false };
+    return { armed: false, run: false };
+  }
+  if (event.type === 'compositionend') {
+    return armed ? { armed: false, run: true } : { armed: false, run: false };
+  }
+  if (!armed || event.isComposing === true) return { armed, run: false };
+  if (isControlHeldEnter(event)) return { armed: false, run: true };
+  return { armed: false, run: false };
+}
+
+/**
+ * A matching Control+Enter keydown must not insert a line, even when a rewrite is already
+ * running. The IME re-dispatches Enter after compositionend, and that keydown arrives only
+ * after `canRewrite` has turned false. Command+Enter is not swallowed.
+ */
+export function settleNaturalRewriteKey(
+  armed: boolean,
+  canRewrite: boolean,
+  event: NaturalRewriteKey,
+): { armed: boolean; run: boolean; preventDefault: boolean } {
+  const next = reduceNaturalRewriteKey(armed, event);
+  return {
+    armed: next.armed,
+    run: next.run && canRewrite,
+    preventDefault: event.type === 'keydown' && next.run,
+  };
+}
+
+function isControlHeldEnter(event: NaturalRewriteKey): boolean {
+  return event.ctrlKey === true && !blocksNaturalRewrite(event) && isEnterIdentity(event);
 }
 
 /**
