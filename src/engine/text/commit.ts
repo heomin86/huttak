@@ -62,6 +62,23 @@ export function commitPiece(source: string, streamed: string, finalText: string)
   return '';
 }
 
+function textIsOnlyLanguageMarker(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && stripLanguageMarkers(trimmed).trim().length === 0;
+}
+
+/**
+ * The string a cache should keep for one finished segment. A real translation is
+ * stored as the engine sent it. A language tag that was the whole answer is stored
+ * as the source, so a later hit — an empty final and no deltas — still leaves the
+ * source. A result that was already empty stays empty.
+ */
+export function finalForCache(source: string, streamed: string, finalText: string): string {
+  if (stripLanguageMarkers(finalText).trim().length > 0) return finalText;
+  if (!textIsOnlyLanguageMarker(streamed) && !textIsOnlyLanguageMarker(finalText)) return finalText;
+  return source;
+}
+
 /** Spacing-insensitive key for "is this the translation we already painted?" */
 export function comparableText(value: string): string {
   return value

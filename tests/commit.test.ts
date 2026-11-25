@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appendDelta, commitPiece, dropRetranslation } from '@/engine/text/commit';
+import { appendDelta, commitPiece, dropRetranslation, finalForCache } from '@/engine/text/commit';
 import { joinPreservingBreaks, splitKeepingLineBreaks } from '@/engine/text/sentences';
 
 describe('stream commit', () => {
@@ -37,6 +37,16 @@ describe('stream commit', () => {
       'See § 3 of the act.',
     );
     expect(commitPiece(source, '', '')).toBe('');
+  });
+
+  it('stores a tag-only answer as the source and leaves a real empty answer empty', () => {
+    const source = 'The meeting starts at nine.';
+    expect(finalForCache(source, '§ko§', '')).toBe(source);
+    expect(finalForCache(source, '', '§en§')).toBe(source);
+    expect(finalForCache(source, '', '')).toBe('');
+    expect(finalForCache(source, '안녕', '안녕하세요')).toBe('안녕하세요');
+    expect(commitPiece(source, '', finalForCache(source, '§ko§', ''))).toBe(source);
+    expect(commitPiece(source, '', finalForCache(source, '', ''))).toBe('');
   });
 });
 

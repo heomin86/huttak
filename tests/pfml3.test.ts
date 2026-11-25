@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildTranslationPrompt,
   cleanModelOutput,
+  outputIsOnlyLanguageMarker,
+  presentModelOutput,
   sanitizeGlossary,
   TRANSLATION_STOP_TOKENS,
 } from '@/engine/prompt/pfml3';
@@ -136,5 +138,17 @@ describe('PFML3 prompt', () => {
     expect(cleanModelOutput('§ko§こんにちは <|plamo:tag|>')).toBe('こんにちは');
     expect(cleanModelOutput('See § 3 of the act.')).toBe('See § 3 of the act.');
     expect(cleanModelOutput('The sign § stands alone.')).toBe('The sign § stands alone.');
+  });
+
+  it('keeps the source when a language tag was the whole answer', () => {
+    const source = 'The meeting starts at nine.';
+    expect(outputIsOnlyLanguageMarker('§ko§')).toBe(true);
+    expect(outputIsOnlyLanguageMarker('§en§')).toBe(true);
+    expect(outputIsOnlyLanguageMarker('')).toBe(false);
+    expect(outputIsOnlyLanguageMarker('<|plamo:tag|>')).toBe(false);
+    expect(presentModelOutput('§ko§', source)).toBe(source);
+    expect(presentModelOutput('§en§안녕하세요', source)).toBe('안녕하세요');
+    expect(presentModelOutput('', source)).toBe('');
+    expect(presentModelOutput('<|plamo:bos|>', source)).toBe('');
   });
 });
