@@ -896,5 +896,50 @@
   "captionSameLanguage": {
     "message": "The captions are already in the target language.",
     "description": "Status when every caption track is already in the language being translated to."
+  },
+  "openNatural": {
+    "message": "My Korean, in natural English"
+  },
+  "naturalLead": {
+    "message": "Type Korean you wrote. It is rewritten as American English a native speaker would actually use, not a stiff word-for-word translation. This box is separate from the buttons that translate the whole page or a post. No account is required, and the text stays on this device."
+  },
+  "naturalHeading": {
+    "message": "Natural English"
+  },
+  "naturalSourceLabel": {
+    "message": "Korean I wrote"
+  },
+  "naturalSourceNote": {
+    "message": "Formal and casual tone both stay"
+  },
+  "naturalPlaceholder": {
+    "message": "Type or paste your Korean here."
+  },
+  "naturalResultHeading": {
+    "message": "Natural English"
+  },
+  "naturalResultNote": {
+    "message": "American English"
+  },
+  "naturalResultEmpty": {
+    "message": "American English a native speaker would use shows up here."
+  },
+  "naturalRun": {
+    "message": "Rewrite in English"
+  },
+  "naturalRunning": {
+    "message": "Rewriting…"
+  },
+  "naturalRunHint": {
+    "message": "Ctrl+Enter (⌘+Enter on a Mac) rewrites too."
+  },
+  "naturalFailed": {
+    "message": "This could not be rewritten. Your Korean is unchanged; try again."
+  },
+  "naturalDirectionHint": {
+    "message": "Rewrites Korean into American English. It does not change your page-translation settings."
+  },
+  "naturalCopyFailed": {
+    "message": "Could not copy the English. Select it and copy it yourself."
   }
 }

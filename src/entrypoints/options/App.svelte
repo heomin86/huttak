@@ -185,6 +185,15 @@
     }
   }
 
+  async function openNatural() {
+    actionFailed = false;
+    try {
+      await browser.tabs.create({ url: browser.runtime.getURL('/natural.html') });
+    } catch {
+      actionFailed = true;
+    }
+  }
+
   onMount(() => {
     const unsubscribe = subscribeSettings((next) => {
       settings = next;
@@ -469,6 +478,7 @@
   <div class="actions">
     <button class="button" type="button" onclick={openOnboarding}>{t('openOnboarding')}</button>
     <button class="button secondary" type="button" onclick={openTyped}>{t('openTyped')}</button>
+    <button class="button secondary" type="button" onclick={openNatural}>{t('openNatural')}</button>
   </div>
   {#if actionFailed}
     <p class="error" role="alert">{t('errorAction')}</p>
@@ -653,7 +663,9 @@
 
   .actions {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
+    gap: var(--space-2);
   }
 
   .footer {

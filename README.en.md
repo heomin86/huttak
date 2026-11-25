@@ -95,6 +95,7 @@ Right-click the page without a selection to see the page menu. The selection men
 | Switch replaced text and bilingual text | Alt+B           | Option (⌥)+B |
 | Translate the selection                 | Alt+S           | Option (⌥)+S |
 | Translate typed text (on that page)     | Ctrl+Enter      | ⌘+Enter      |
+| My Korean, in natural English           | Ctrl+Enter      | ⌘+Enter      |
 
 Change the keys at `chrome://extensions/shortcuts`. Chrome reads Alt in an extension shortcut as Option on a Mac. Alt+D is not used, because Chrome on Windows and Linux uses it for the address bar.
 
@@ -120,6 +121,10 @@ Drag a selection and a ㅎ icon appears beside it. Click the icon to translate. 
 ### Typed text
 
 **Translate typed text** in the popup or in settings opens a page where you paste text and translate it. It uses the same engine and the same target language as page translation. **Copy** takes the result. The limit is 100,000 characters at once. That page uses PLaMo only, and refuses a language PLaMo does not support.
+
+### Korean I wrote
+
+**My Korean, in natural English** in the popup or in settings opens a box for Korean you wrote yourself. It rewrites that Korean as American English a native speaker would actually use, not a stiff word-for-word translation. It is a separate input from whole-page translation, post-only translation, and the typed-text translator above. No account is required, and the text stays on this device. The default engine is in-browser PLaMo. If you have already chosen the local server in settings, that server does this rewrite too. **Copy** takes the English.
 
 ### Always translate this site
 

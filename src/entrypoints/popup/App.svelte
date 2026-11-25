@@ -257,6 +257,12 @@
     void browser.tabs.create({ url: browser.runtime.getURL('/typed.html') }).catch(() => undefined);
   }
 
+  function openNatural() {
+    void browser.tabs
+      .create({ url: browser.runtime.getURL('/natural.html') })
+      .catch(() => undefined);
+  }
+
   onMount(() => {
     const unsubscribe = subscribeSettings((next) => {
       settings = next;
@@ -453,9 +459,14 @@
     <li>{t('shortcutSelection')}</li>
   </ul>
 
-  <button class="button secondary block" type="button" onclick={openTyped}>
-    {t('openTyped')}
-  </button>
+  <div class="composers">
+    <button class="button secondary block" type="button" onclick={openTyped}>
+      {t('openTyped')}
+    </button>
+    <button class="button secondary block" type="button" onclick={openNatural}>
+      {t('openNatural')}
+    </button>
+  </div>
 
   <footer class="footer">
     <button class="link-button" type="button" onclick={openOptions}>{t('openOptions')}</button>
@@ -569,6 +580,17 @@
     display: grid;
     gap: 2px;
     color: var(--muted);
+  }
+
+  .composers {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .composers .button {
+    white-space: normal;
+    line-height: 1.35;
+    text-align: center;
   }
 
   .footer {

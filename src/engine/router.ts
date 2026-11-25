@@ -1,10 +1,11 @@
 import { EngineError, isAbortError } from './errors';
-import type {
-  EngineKind,
-  IdentifiedEngine,
-  TranslateOptions,
-  TranslateSegment,
-  TranslationChunk,
+import {
+  NATURAL_AMERICAN_TASK,
+  type EngineKind,
+  type IdentifiedEngine,
+  type TranslateOptions,
+  type TranslateSegment,
+  type TranslationChunk,
 } from './types';
 
 export type PairSupport = 'available' | 'downloadable' | 'downloading' | 'unavailable';
@@ -80,6 +81,17 @@ export class RoutingEngine {
     segments: readonly TranslateSegment[],
     options: TranslateOptions,
   ): Promise<EngineKind> {
+    // The rewrite box is not a page. Chrome's built-in translator is a literal page
+    // engine, so this request stays on the on-device model (PLaMo, or the local server
+    // when that is the selected engine) and is refused rather than handed to Chrome.
+    if (options.task === NATURAL_AMERICAN_TASK) {
+      if (this.dependencies.plamoSupports(options.src, options.tgt)) return 'plamo';
+      throw new EngineError(
+        'unsupported-language',
+        'This rewrite stays on the on-device model and is not sent to the built-in translator.',
+      );
+    }
+
     if (this.dependencies.plamoSupports(options.src, options.tgt)) return 'plamo';
 
     const chromeSupport = await this.dependencies.chromeSupport(segments, options.src, options.tgt);

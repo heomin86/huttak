@@ -66,6 +66,8 @@ describe('local prompt', () => {
     });
     expect(system?.role).toBe('system');
     expect(system?.content).toContain('into Korean');
+    expect(system?.content).toContain('You are a professional translator');
+    expect(system?.content).not.toContain('translationese');
     expect(system?.content).toContain('dashboard → 대시보드');
     expect(system?.content).not.toContain('invoice');
     expect(user).toEqual({ role: 'user', content: 'Open the dashboard.' });
@@ -178,6 +180,34 @@ describe('local server engine', () => {
       collect(engine.translate([{ id: 'a', text: 'Hi' }], options())),
     ).rejects.toMatchObject({ code: 'local-server-unavailable' });
   });
+
+  it('rewrites Korean with the natural-American instructions and returns only the English', async () => {
+    const requests: { url: string; body: Record<string, unknown> }[] = [];
+    const engine = new LocalServerEngine({
+      baseUrl: 'http://127.0.0.1:8080',
+      fetch: (async (url: string, init: RequestInit) => {
+        requests.push({ url, body: JSON.parse(String(init.body)) as Record<string, unknown> });
+        return sse(['Translation: "', 'Thanks for waiting."']);
+      }) as unknown as typeof fetch,
+    });
+
+    const chunks = await collect(
+      engine.translate(
+        [{ id: 'a', text: '기다려 주셔서 감사합니다.' }],
+        options({ tgt: 'en', src: 'ko', task: 'natural-american' }),
+      ),
+    );
+
+    const messages = requests[0]?.body.messages as { role: string; content: string }[];
+    expect(requests[0]?.url).toBe('http://127.0.0.1:8080/v1/chat/completions');
+    expect(messages[0]?.content).toContain('translationese');
+    expect(messages[0]?.content).toContain('AI-sounding');
+    expect(messages[0]?.content).toContain('formal stays formal');
+    expect(messages[0]?.content).toContain('Output only the English');
+    expect(messages[0]?.content).not.toContain('professional translator');
+    expect(messages[1]).toEqual({ role: 'user', content: '기다려 주셔서 감사합니다.' });
+    expect(chunks.at(-1)?.final).toBe('Thanks for waiting.');
+  });
 });
 
 describe('TranslateGemma server', () => {
@@ -190,6 +220,8 @@ describe('TranslateGemma server', () => {
   it('renders the template with language names and codes', () => {
     const prompt = buildTranslateGemmaPrompt('  Hello.  ', 'en', 'ko');
     expect(prompt).toContain('professional English (en) to Korean (ko) translator');
+    expect(prompt).toContain('accurately convey');
+    expect(prompt).not.toContain('translationese');
     expect(prompt).toContain('into Korean:\n\n\nHello.<end_of_turn>');
     expect(prompt.endsWith('<start_of_turn>model\n')).toBe(true);
   });
@@ -222,6 +254,42 @@ describe('TranslateGemma server', () => {
     expect(first.at(-1)).toEqual({ id: 'a', final: '안녕하세요.', engine: 'local' });
     expect(calls.filter((url) => url.endsWith('/props'))).toHaveLength(1);
     expect(calls.filter((url) => url.endsWith('/completion'))).toHaveLength(2);
+  });
+
+  it('sends the rewrite instructions through the TranslateGemma template', async () => {
+    const encoder = new TextEncoder();
+    let prompt = '';
+    const engine = new LocalServerEngine({
+      baseUrl: 'http://127.0.0.1:8080',
+      fetch: (async (url: string, init?: RequestInit) => {
+        if (url.endsWith('/props')) {
+          return Response.json({ chat_template: 'x target_lang_code y' });
+        }
+        prompt = String(JSON.parse(String(init?.body)).prompt);
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ content: 'English: "Sounds good."' })}\n\n`),
+            );
+            controller.close();
+          },
+        });
+        return new Response(body, { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+
+    const chunks = await collect(
+      engine.translate(
+        [{ id: 'a', text: '알겠습니다.' }],
+        options({ tgt: 'en', src: 'ko', task: 'natural-american' }),
+      ),
+    );
+
+    expect(prompt).toContain('translationese');
+    expect(prompt).toContain('알겠습니다.');
+    expect(prompt).not.toContain('accurately convey');
+    expect(prompt.endsWith('<start_of_turn>model\n')).toBe(true);
+    expect(chunks.at(-1)?.final).toBe('Sounds good.');
   });
 });
 

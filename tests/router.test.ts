@@ -77,6 +77,38 @@ describe('RoutingEngine', () => {
     expect(chrome.calls).toBe(0);
   });
 
+  it('keeps a natural-American rewrite on the on-device model and never asks Chrome', async () => {
+    const { router, plamo, chrome, chromeProbes } = setup({ plamoSupports: true });
+
+    const chunks = await collectChunks(
+      router.translate(
+        [{ id: 'a', text: '감사합니다.' }],
+        options({ tgt: 'en', src: 'ko', task: 'natural-american' }),
+      ),
+    );
+
+    expect(chunks).toEqual([CHUNK]);
+    expect(plamo.calls).toBe(1);
+    expect(chrome.calls).toBe(0);
+    expect(chromeProbes).toBe(0);
+    expect(router.activeEngine).toBe('plamo');
+  });
+
+  it('refuses a natural-American rewrite instead of sending it to Chrome', async () => {
+    const { router, chrome, chromeProbes } = setup({ plamoSupports: false });
+
+    await expect(
+      collectChunks(
+        router.translate(
+          [{ id: 'a', text: '감사합니다.' }],
+          options({ tgt: 'pt', task: 'natural-american' }),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'unsupported-language' });
+    expect(chrome.calls).toBe(0);
+    expect(chromeProbes).toBe(0);
+  });
+
   it('routes languages PLaMo does not support to the built-in translator', async () => {
     const { router } = setup({ plamoSupports: false });
     const chunks = await collectChunks(

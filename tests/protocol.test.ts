@@ -52,6 +52,29 @@ describe('engine host protocol', () => {
     });
   });
 
+  it('carries the natural-English task and refuses any other task name', () => {
+    const serialized = serializeTranslateOptions({ ...OPTIONS, task: 'natural-american' });
+    expect(serialized.task).toBe('natural-american');
+    const signal = new AbortController().signal;
+    expect(deserializeTranslateOptions(serialized, signal).task).toBe('natural-american');
+    expect(
+      isEngineHostRequest({
+        type: 'translate',
+        requestId: 'r',
+        segments: SEGMENTS,
+        options: serialized,
+      }),
+    ).toBe(true);
+    expect(
+      isEngineHostRequest({
+        type: 'translate',
+        requestId: 'r',
+        segments: SEGMENTS,
+        options: { ...serialized, task: 'literal' },
+      }),
+    ).toBe(false);
+  });
+
   it('validates translate, status and model requests', () => {
     expect(
       isEngineHostRequest({
