@@ -57,6 +57,22 @@ describe('translation cache keys', () => {
     expect(segments.slice(0, 3)).toEqual(['v1', 'model', 'auto']);
   });
 
+  it('leaves a page key unchanged and separates a natural-English rewrite of the same text', () => {
+    const base = {
+      model: 'plamo-0.8b',
+      tgt: 'en',
+      form: 'polite' as const,
+      text: '기다려 주셔서 감사합니다.',
+      src: 'ko',
+    };
+    const page = buildTranslationCacheKey(base);
+    const rewrite = buildTranslationCacheKey({ ...base, task: 'natural-american' });
+
+    expect(page.split('|')).toHaveLength(7);
+    expect(rewrite).not.toBe(page);
+    expect(rewrite.endsWith('|natural-american')).toBe(true);
+  });
+
   it('fingerprints the glossary independently of the cache key', () => {
     expect(glossaryVersion(undefined)).toBe('none');
     expect(glossaryVersion([])).toBe('none');

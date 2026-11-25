@@ -1,10 +1,9 @@
 import { isAbortError, isEngineError, EngineError, toEngineError } from '../errors';
 import {
-  buildTranslationPrompt,
-  cleanModelOutput,
-  sanitizeGlossary,
-  type PromptInput,
-} from '../prompt/pfml3';
+  buildNaturalAmericanPlamoPrompt,
+  cleanNaturalAmericanOutput,
+} from '../prompt/natural-american';
+import { buildTranslationPrompt, cleanModelOutput, sanitizeGlossary } from '../prompt/pfml3';
 import { ChunkStream } from '../queue/chunk-stream';
 import { JobScheduler, type ScheduledHandle } from '../queue/scheduler';
 import { DEFAULT_PLAN_CONFIG, planWork, type PlanConfig, type WorkItem } from '../text/plan';
@@ -15,11 +14,12 @@ import {
   splitForTranslation,
 } from '../text/sentences';
 import { completionTokenBudget, estimateTokens } from '../text/tokens';
-import type {
-  IdentifiedEngine,
-  TranslateOptions,
-  TranslateSegment,
-  TranslationChunk,
+import {
+  NATURAL_AMERICAN_TASK,
+  type IdentifiedEngine,
+  type TranslateOptions,
+  type TranslateSegment,
+  type TranslationChunk,
 } from '../types';
 import { canonicalLanguage } from '@/shared/languages';
 import { CONTEXT_TOKENS } from './backend';
@@ -337,15 +337,20 @@ export class InBrowserEngine implements IdentifiedEngine {
     const glossary = sanitizeGlossary(options.glossary ?? []).filter((entry) =>
       text.includes(entry.source),
     );
-    const promptInput: PromptInput = {
-      text,
-      tgt,
-      ...(src !== null ? { src } : {}),
-      ...(tgt === 'ja' ? { form: options.form } : {}),
-      ...(glossary.length > 0 ? { glossary } : {}),
-      ...(options.context ? { context: options.context } : {}),
-    };
-    const prompt = buildTranslationPrompt(promptInput);
+    const natural = options.task === NATURAL_AMERICAN_TASK;
+    const prompt = natural
+      ? buildNaturalAmericanPlamoPrompt({
+          text,
+          ...(glossary.length > 0 ? { glossary } : {}),
+        })
+      : buildTranslationPrompt({
+          text,
+          tgt,
+          ...(src !== null ? { src } : {}),
+          ...(tgt === 'ja' ? { form: options.form } : {}),
+          ...(glossary.length > 0 ? { glossary } : {}),
+          ...(options.context ? { context: options.context } : {}),
+        });
     const available = this.contextTokens - estimateTokens(prompt) - 8;
 
     if (available < 16) {
@@ -363,7 +368,8 @@ export class InBrowserEngine implements IdentifiedEngine {
       },
     });
 
-    return output;
+    if (!natural) return output;
+    return cleanNaturalAmericanOutput(cleanModelOutput(output));
   }
 }
 

@@ -7,7 +7,9 @@ function source(path: string): string {
 
 const onboarding = source('entrypoints/onboarding/App.svelte');
 const typed = source('entrypoints/typed/App.svelte');
+const natural = source('entrypoints/natural/App.svelte');
 const popup = source('entrypoints/popup/App.svelte');
+const session = source('dom/session.ts');
 const modelManager = source('ui/ModelManager.svelte');
 
 /**
@@ -94,5 +96,48 @@ describe('typed translation layout', () => {
     expect(typed).toContain('requestModelDownload');
     // The result is copied, never written by a second engine.
     expect(typed).toContain('copyTranslation');
+  });
+});
+
+/**
+ * The natural-English box is its own input. Page translation and the general typed
+ * translator keep their controls; this one does not change the page's target language.
+ */
+describe('natural American English input', () => {
+  it('puts the Korean the reader wrote beside the English result', () => {
+    expect(natural).toContain('id="natural-source-title"');
+    expect(natural).toContain('id="natural-result-title"');
+    expect(natural).toMatch(/class="compare"[\s\S]*class="pane"[\s\S]*class="pane output"/);
+    expect(natural).toMatch(
+      /\.compare\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\)/u,
+    );
+  });
+
+  it('sends Korean to American English on the existing engine and does not retarget the page', () => {
+    expect(natural).toContain('NATURAL_AMERICAN_TASK');
+    expect(natural).toContain("src: 'ko'");
+    expect(natural).toContain("tgt: 'en'");
+    expect(natural).toContain("from './engine'");
+    expect(natural).toContain('typedReadiness');
+    expect(natural).not.toContain('saveSettings');
+    expect(natural).not.toContain('LanguageField');
+    expect(natural).not.toContain('translatePage');
+    expect(natural).not.toContain('translatePost');
+  });
+
+  it('keeps the page translator and the new box on different controls', () => {
+    const actions = popup.slice(
+      popup.indexOf('class="page-actions"'),
+      popup.indexOf('class="composers"'),
+    );
+    expect(actions).toContain('translatePage');
+    expect(actions).toContain('translatePost');
+    expect(actions).not.toContain('openNatural');
+    expect(popup).toContain("getURL('/natural.html')");
+    expect(popup).toContain('openTyped');
+    expect(session).not.toContain('NATURAL_AMERICAN_TASK');
+    expect(session).not.toContain('natural-american');
+    expect(typed).not.toContain('natural-american');
+    expect(typed).not.toContain('NATURAL_AMERICAN_TASK');
   });
 });

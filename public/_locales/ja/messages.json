@@ -896,5 +896,50 @@
   "captionSameLanguage": {
     "message": "字幕はすでに翻訳先の言語です。",
     "description": "Status when every caption track is already in the language being translated to."
+  },
+  "openNatural": {
+    "message": "自分の韓国語を自然な英語に"
+  },
+  "naturalLead": {
+    "message": "自分で書いた韓国語を入れると、単語をそのまま移した硬い英語ではなく、アメリカ英語の話者がその場面で実際に使いそうな文に書き換えます。ページ全体や投稿だけを翻訳するボタンとは別の入力です。アカウントは不要で、文章はこの端末の外に出ません。"
+  },
+  "naturalHeading": {
+    "message": "自然な英語"
+  },
+  "naturalSourceLabel": {
+    "message": "自分で書いた韓国語"
+  },
+  "naturalSourceNote": {
+    "message": "丁寧さもくだけた感じもそのまま"
+  },
+  "naturalPlaceholder": {
+    "message": "ここに韓国語を入力するか貼り付けてください。"
+  },
+  "naturalResultHeading": {
+    "message": "自然な英語"
+  },
+  "naturalResultNote": {
+    "message": "アメリカ英語"
+  },
+  "naturalResultEmpty": {
+    "message": "アメリカ英語の話者が使いそうな文がここに出ます。"
+  },
+  "naturalRun": {
+    "message": "英語に書き換える"
+  },
+  "naturalRunning": {
+    "message": "書き換え中…"
+  },
+  "naturalRunHint": {
+    "message": "Ctrl+Enter（Macは⌘+Enter）でも書き換えます。"
+  },
+  "naturalFailed": {
+    "message": "英語に書き換えられませんでした。入力した文章はそのままなので、もう一度試してください。"
+  },
+  "naturalDirectionHint": {
+    "message": "韓国語をアメリカ英語に書き換えます。ページ翻訳の設定は変えません。"
+  },
+  "naturalCopyFailed": {
+    "message": "英語をコピーできませんでした。選択して自分でコピーしてください。"
   }
 }

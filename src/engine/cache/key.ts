@@ -1,7 +1,7 @@
 import { canonicalLanguage } from '@/shared/languages';
 import { sha256Hex } from '../model/sha256';
 import { sanitizeGlossary } from '../prompt/pfml3';
-import type { Formality, GlossaryEntry } from '../types';
+import type { Formality, GlossaryEntry, TranslationTask } from '../types';
 
 export interface CacheKeyInput {
   model: string;
@@ -10,6 +10,7 @@ export interface CacheKeyInput {
   text: string;
   src?: string | undefined;
   glossary?: readonly GlossaryEntry[] | undefined;
+  task?: TranslationTask | undefined;
 }
 
 function fnv1a(value: string): string {
@@ -32,7 +33,7 @@ function languagePart(value: string | undefined): string {
 }
 
 export function buildTranslationCacheKey(input: CacheKeyInput): string {
-  return [
+  const parts = [
     'v1',
     input.model,
     languagePart(input.src),
@@ -40,5 +41,10 @@ export function buildTranslationCacheKey(input: CacheKeyInput): string {
     input.form,
     glossaryVersion(sanitizeGlossary(input.glossary ?? [])),
     sha256Hex(input.text),
-  ].join('|');
+  ];
+  // Page translation leaves the task unset. Keeping it off the key leaves the keys
+  // already stored on this device valid. The natural-English box sets it, so a literal
+  // page translation of the same sentence is not reused as the rewrite.
+  if (input.task !== undefined) parts.push(input.task);
+  return parts.join('|');
 }

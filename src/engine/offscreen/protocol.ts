@@ -1,12 +1,14 @@
 import { EngineError, isEngineErrorCode, type EngineErrorCode } from '../errors';
 import { isModelId, type ModelId } from '../model/catalog';
-import { isTranslationChunk } from '../types';
-import type {
-  Formality,
-  GlossaryEntry,
-  TranslateOptions,
-  TranslateSegment,
-  TranslationChunk,
+import {
+  NATURAL_AMERICAN_TASK,
+  isTranslationChunk,
+  type Formality,
+  type GlossaryEntry,
+  type TranslateOptions,
+  type TranslateSegment,
+  type TranslationChunk,
+  type TranslationTask,
 } from '../types';
 import { isModelStatus, type ModelStatus } from '../../shared/engine-status';
 import { MAX_GLOSSARY_MESSAGE_ENTRIES, MAX_GLOSSARY_TEXT } from '../../shared/glossary';
@@ -24,6 +26,7 @@ export interface SerializedTranslateOptions {
   context?: string;
   priority: number;
   eager?: boolean;
+  task?: TranslationTask;
 }
 
 export function serializeTranslateOptions(options: TranslateOptions): SerializedTranslateOptions {
@@ -37,6 +40,7 @@ export function serializeTranslateOptions(options: TranslateOptions): Serialized
       : {}),
     ...(options.context !== undefined ? { context: options.context } : {}),
     ...(options.eager ? { eager: true } : {}),
+    ...(options.task !== undefined ? { task: options.task } : {}),
   };
 }
 
@@ -53,6 +57,7 @@ export function deserializeTranslateOptions(
     ...(serialized.glossary ? { glossary: serialized.glossary } : {}),
     ...(serialized.context !== undefined ? { context: serialized.context } : {}),
     ...(serialized.eager ? { eager: true } : {}),
+    ...(serialized.task !== undefined ? { task: serialized.task } : {}),
   };
 }
 
@@ -277,6 +282,7 @@ export function isSerializedTranslateOptions(value: unknown): value is Serialize
   if (value.context !== undefined && !isBoundedText(value.context, MAX_CONTEXT_TEXT)) return false;
   if (value.glossary !== undefined && !isGlossary(value.glossary)) return false;
   if (value.eager !== undefined && typeof value.eager !== 'boolean') return false;
+  if (value.task !== undefined && value.task !== NATURAL_AMERICAN_TASK) return false;
   return true;
 }
 

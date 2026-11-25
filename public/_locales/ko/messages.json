@@ -896,5 +896,50 @@
   "captionSameLanguage": {
     "message": "자막이 이미 번역하려는 언어입니다.",
     "description": "Status when every caption track is already in the language being translated to."
+  },
+  "openNatural": {
+    "message": "내가 쓴 한글, 자연스러운 영어"
+  },
+  "naturalLead": {
+    "message": "직접 쓴 한글을 넣으면, 뜻을 그대로 옮긴 딱딱한 영어가 아니라 미국 사람이 그 상황에서 실제로 쓸 법한 문장으로 바꿉니다. 페이지 전체나 게시글만 번역하는 버튼과는 다른 입력입니다. 계정은 필요 없고, 글은 이 기기 밖으로 나가지 않습니다."
+  },
+  "naturalHeading": {
+    "message": "자연스러운 영어"
+  },
+  "naturalSourceLabel": {
+    "message": "내가 쓴 한글"
+  },
+  "naturalSourceNote": {
+    "message": "격식과 반말은 그대로"
+  },
+  "naturalPlaceholder": {
+    "message": "여기에 한글을 입력하거나 붙여 넣으세요."
+  },
+  "naturalResultHeading": {
+    "message": "자연스러운 영어"
+  },
+  "naturalResultNote": {
+    "message": "미국 영어"
+  },
+  "naturalResultEmpty": {
+    "message": "미국 사람이 그 상황에서 쓸 법한 영어가 여기에 나타납니다."
+  },
+  "naturalRun": {
+    "message": "영어로 바꾸기"
+  },
+  "naturalRunning": {
+    "message": "바꾸는 중…"
+  },
+  "naturalRunHint": {
+    "message": "Ctrl+Enter(Mac은 ⌘+Enter)로도 바꿉니다."
+  },
+  "naturalFailed": {
+    "message": "영어로 바꾸지 못했습니다. 입력한 글은 그대로 있으니 다시 시도해 주세요."
+  },
+  "naturalDirectionHint": {
+    "message": "한글을 미국 영어로 바꿉니다. 페이지 번역 설정은 바꾸지 않습니다."
+  },
+  "naturalCopyFailed": {
+    "message": "영어를 복사하지 못했습니다. 직접 선택해서 복사해 주세요."
   }
 }

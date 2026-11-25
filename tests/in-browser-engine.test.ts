@@ -25,6 +25,39 @@ function deltaText(chunks: readonly TranslationChunk[]): string {
 }
 
 describe('InBrowserEngine', () => {
+  it('rewrites the reader’s Korean with the natural-American rules and leaves page prompts alone', async () => {
+    const runtime = new FakeRuntime(() => 'Translation: "Thanks for waiting."');
+    const engine = new InBrowserEngine(runtime);
+    const text = '기다려 주셔서 감사합니다.';
+
+    const chunks = await collectChunks(
+      engine.translate(
+        [{ id: 'natural', text }],
+        options({ tgt: 'en', src: 'ko', task: 'natural-american' }),
+      ),
+    );
+
+    const prompt = runtime.requests[0]?.prompt ?? '';
+    expect(prompt).toContain('translationese');
+    expect(prompt).toContain('AI-sounding');
+    expect(prompt).toContain('formal stays formal, casual stays casual');
+    expect(prompt).toContain('Output only the English');
+    expect(prompt).toContain('<|plamo:key|>lang<|plamo:val|>ko');
+    expect(prompt).toContain('<|plamo:key|>lang<|plamo:val|>en');
+    expect(prompt).toContain(text);
+    expect(prompt).not.toContain('form<|plamo:val|>');
+    expect(finalChunks(chunks)).toEqual([
+      { id: 'natural', final: 'Thanks for waiting.', engine: 'plamo' },
+    ]);
+
+    const pageRuntime = new FakeRuntime(() => 'Thanks for waiting.');
+    const pageEngine = new InBrowserEngine(pageRuntime);
+    await collectChunks(
+      pageEngine.translate([{ id: 'a', text }], options({ tgt: 'en', src: 'ko' })),
+    );
+    expect(pageRuntime.requests[0]?.prompt ?? '').not.toContain('translationese');
+  });
+
   it('streams deltas and a final tagged with the PLaMo engine', async () => {
     const runtime = new FakeRuntime(() => 'こんにちは');
     const engine = new InBrowserEngine(runtime);
@@ -58,6 +91,7 @@ describe('InBrowserEngine', () => {
 
     const prompt = runtime.requests[0]?.prompt ?? '';
     expect(prompt).not.toContain('form<|plamo:val|>');
+    expect(prompt).not.toContain('translationese');
     expect(prompt).toContain('<|plamo:tag|>context<|plamo:msg|>Greeting page');
     expect(prompt).toContain('<|plamo:tag|>glossary');
     expect(prompt).toContain('Runner');

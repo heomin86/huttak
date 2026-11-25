@@ -1,10 +1,16 @@
 import { EngineError, isAbortError } from '../errors';
-import type {
-  GlossaryEntry,
-  IdentifiedEngine,
-  TranslateOptions,
-  TranslateSegment,
-  TranslationChunk,
+import {
+  buildNaturalAmericanGemmaPrompt,
+  buildNaturalAmericanMessages,
+  cleanNaturalAmericanOutput,
+} from '../prompt/natural-american';
+import {
+  NATURAL_AMERICAN_TASK,
+  type GlossaryEntry,
+  type IdentifiedEngine,
+  type TranslateOptions,
+  type TranslateSegment,
+  type TranslationChunk,
 } from '../types';
 
 /**
@@ -302,14 +308,20 @@ export class LocalServerEngine implements IdentifiedEngine {
 
     for (const segment of segments) {
       if (options.signal.aborted) return;
+      const natural = options.task === NATURAL_AMERICAN_TASK;
       const chatBody = {
         ...(model ? { model } : {}),
-        messages: buildLocalMessages({
-          text: segment.text,
-          tgt: options.tgt,
-          src: options.src,
-          glossary: options.glossary,
-        }),
+        messages: natural
+          ? buildNaturalAmericanMessages({
+              text: segment.text,
+              glossary: options.glossary,
+            })
+          : buildLocalMessages({
+              text: segment.text,
+              tgt: options.tgt,
+              src: options.src,
+              glossary: options.glossary,
+            }),
         temperature: 0,
         stream: true,
         // Some GGUF conversions miss the end-of-turn token, so the server would print it.
@@ -318,7 +330,9 @@ export class LocalServerEngine implements IdentifiedEngine {
         chat_template_kwargs: { enable_thinking: false },
       };
       const completionBody = {
-        prompt: buildTranslateGemmaPrompt(segment.text, source, options.tgt),
+        prompt: natural
+          ? buildNaturalAmericanGemmaPrompt(segment.text)
+          : buildTranslateGemmaPrompt(segment.text, source, options.tgt),
         temperature: 0,
         n_predict: 1024,
         stream: true,
@@ -371,7 +385,11 @@ export class LocalServerEngine implements IdentifiedEngine {
       const answer = stripReasoning(text);
       yield {
         id: segment.id,
-        final: options.tgt === 'ko' ? fixKoreanOutput(answer) : answer,
+        final: natural
+          ? cleanNaturalAmericanOutput(answer)
+          : options.tgt === 'ko'
+            ? fixKoreanOutput(answer)
+            : answer,
         engine: this.kind,
       };
     }

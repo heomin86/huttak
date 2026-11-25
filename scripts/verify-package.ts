@@ -29,6 +29,7 @@ export const REQUIRED_ENTRIES = [
   'onboarding.html',
   'sample.html',
   'typed.html',
+  'natural.html',
   'gpu-probe.js',
   'grant.html',
   'offscreen.html',

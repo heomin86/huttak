@@ -2,6 +2,14 @@ export type Formality = 'polite' | 'plain';
 
 export type EngineKind = 'plamo' | 'chrome' | 'local';
 
+/**
+ * The separate box where the reader pastes Korean they wrote. Page translation never
+ * sets this, so its prompt stays the ordinary one.
+ */
+export const NATURAL_AMERICAN_TASK = 'natural-american' as const;
+
+export type TranslationTask = typeof NATURAL_AMERICAN_TASK;
+
 export interface GlossaryEntry {
   source: string;
   target: string;
@@ -22,6 +30,11 @@ export interface TranslateOptions {
   signal: AbortSignal;
   /** Stream the first short piece before the rest of this call is batched. */
   eager?: boolean | undefined;
+  /**
+   * Set only by the box that rewrites the reader's own Korean into American English.
+   * Absent on a page, a post, a caption and the general typed translator.
+   */
+  task?: TranslationTask | undefined;
 }
 
 interface TranslationChunkBase {
