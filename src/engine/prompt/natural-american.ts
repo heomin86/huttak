@@ -120,7 +120,8 @@ function stripWrappingQuotes(text: string): string {
 /**
  * True when `inner` still uses this quote pair as punctuation. A second delimiter means
  * the outer pair is part of the sentence (quoted speech), not a wrapper around it.
- * An apostrophe inside a word (`can't`, `I'm`) is not a delimiter.
+ * An apostrophe inside a word (`can't`, `I'm`) or a word-final possessive (`dogs'`, `James'`)
+ * is not a delimiter.
  */
 function hasQuoteDelimiter(inner: string, open: string, close: string): boolean {
   const marks = open === close ? [open] : [open, close];
@@ -140,7 +141,10 @@ function isWordApostrophe(text: string, mark: string, index: number): boolean {
   if (!APOSTROPHE_MARKS.has(mark)) return false;
   const prev = text[index - 1] ?? '';
   const next = text[index + 1] ?? '';
-  return /[A-Za-z]/.test(prev) && /[A-Za-z]/.test(next);
+  if (!/[A-Za-z]/.test(prev)) return false;
+  if (/[A-Za-z]/.test(next)) return true;
+  // dogs', James' — the apostrophe ends the word. A closing quote after any other letter stays a quote.
+  return prev.toLowerCase() === 's';
 }
 
 function termsInText(input: NaturalAmericanInput): GlossaryEntry[] {

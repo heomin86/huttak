@@ -90,6 +90,18 @@ describe('natural American English prompts', () => {
     expect(cleanNaturalAmericanOutput(`Translation: ${straight}`)).toBe(straight);
     expect(cleanNaturalAmericanOutput(wrapped)).toBe(straight);
   });
+
+  it('peels a single-quote wrapper around a word-final possessive', () => {
+    expect(cleanNaturalAmericanOutput("'The dogs' toys are by the door.'")).toBe(
+      "The dogs' toys are by the door.",
+    );
+    expect(cleanNaturalAmericanOutput('\u2018The dogs\u2019 toys are by the door.\u2019')).toBe(
+      'The dogs\u2019 toys are by the door.',
+    );
+    expect(cleanNaturalAmericanOutput("'Those belong to the dogs''")).toBe("Those belong to the dogs'");
+    const speech = "'The dogs,' she said. 'Stay.'";
+    expect(cleanNaturalAmericanOutput(speech)).toBe(speech);
+  });
 });
 
 function ruleText(rules: readonly string[]): string {
