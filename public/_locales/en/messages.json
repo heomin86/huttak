@@ -870,11 +870,11 @@
     "description": "Local llama.cpp server engine."
   },
   "selectionEverywhereLabel": {
-    "message": "Show the drag-to-translate icon on every site",
+    "message": "Use the drag-to-translate icon and Control+Enter in fields on every site",
     "description": "Option: run the content script on every site for the selection icon."
   },
   "selectionEverywhereHelp": {
-    "message": "Off by default. When on, the extension asks for access to all sites and the icon appears as soon as you select text, without translating the page first. Pages opened before you turn it on need a reload. Turning it off gives the access back.",
+    "message": "Off by default. When on, the extension asks for access to all sites. The icon then appears as soon as you select text, and Control+Enter turns Korean in a page field into natural English, without translating the page first. Pages opened before you turn it on need a reload. Turning it off gives the access back.",
     "description": "Option: run the content script on every site for the selection icon."
   },
   "selectionEverywhereDenied": {
