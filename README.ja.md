@@ -95,7 +95,7 @@ pnpm build          # 成果物は .output/chrome-mv3
 | 置換表示と対訳表示を切り替える                      | Alt+B           | Option (⌥)+B |
 | 選択したテキストを翻訳する                          | Alt+S           | Option (⌥)+S |
 | 入力した文字を翻訳する（**テキストを翻訳** の画面） | Ctrl+Enter      | ⌘+Enter      |
-| 自分の韓国語を自然な英語に                          | Ctrl+Enter      | ⌘+Enter      |
+| 自分の韓国語を自然な英語に                          | Ctrl+Enter      | Control+Enter |
 
 キーは `chrome://extensions/shortcuts` で変えられます。Mac の Chrome は、拡張機能ショートカットの Alt を Option として読みます。Alt+D は使いません。Windows と Linux の Chrome がアドレスバーに使うためです。
 

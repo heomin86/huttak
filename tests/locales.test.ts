@@ -332,6 +332,16 @@ describe('locale messages', () => {
     }
   });
 
+  it('tells the natural-English screen to use Control+Enter on a Mac', () => {
+    for (const messages of [ko, en, ja]) {
+      expect(messages.naturalRunHint?.message).toContain('Control+Enter');
+    }
+    expect(ko.naturalRunHint?.message).not.toContain('Mac은 ⌘+Enter');
+    expect(en.naturalRunHint?.message).not.toContain('⌘+Enter on a Mac');
+    expect(ja.naturalRunHint?.message).not.toContain('Macは⌘+Enter');
+    expect(ko.typedRunHint?.message).toContain('⌘+Enter');
+  });
+
   it('has no copy left for a try control during the download', () => {
     // The control is not rendered at all until the model is ready, so its label is gone
     // from both locales rather than sitting unused.

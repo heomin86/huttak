@@ -18,7 +18,7 @@
   import {
     MAX_TYPED_CHARS,
     copyTranslation,
-    isTranslateShortcut,
+    isNaturalRewriteShortcut,
     normalizeTypedInput,
     typedReadiness,
     type TypedReadiness,
@@ -136,7 +136,7 @@
   }
 
   function onSourceKeydown(event: KeyboardEvent) {
-    if (!isTranslateShortcut(event)) return;
+    if (!isNaturalRewriteShortcut(event)) return;
     if (!canRewrite) return;
     event.preventDefault();
     void rewriteKorean();

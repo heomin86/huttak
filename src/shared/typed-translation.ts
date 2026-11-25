@@ -99,6 +99,25 @@ export function isTranslateShortcut(event: {
 }
 
 /**
+ * Control+Enter runs the natural-English rewrite on every platform, including a Mac.
+ * Command+Enter is not used there: on a Mac it collides with other commands.
+ * Plain Enter still inserts a line break.
+ */
+export function isNaturalRewriteShortcut(event: {
+  key: string;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  altKey?: boolean;
+  shiftKey?: boolean;
+  isComposing?: boolean;
+}): boolean {
+  if (event.key !== 'Enter') return false;
+  if (event.isComposing === true) return false;
+  if (event.altKey === true || event.shiftKey === true || event.metaKey === true) return false;
+  return event.ctrlKey === true;
+}
+
+/**
  * Per-request ceiling for the typed box. It matches `MAX_SEGMENT_TEXT` so a request the
  * UI accepts is not rejected by the offscreen protocol. The engine still splits the text
  * into prompt-sized pieces.

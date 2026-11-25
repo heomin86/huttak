@@ -95,7 +95,7 @@ pnpm build          # 결과는 .output/chrome-mv3
 | 원문 바꾸기 ↔ 원문과 함께 보기 | Alt+B           | Option (⌥)+B |
 | 선택한 글                      | Alt+S           | Option (⌥)+S |
 | 입력한 글 (입력 번역 화면)     | Ctrl+Enter      | ⌘+Enter      |
-| 내가 쓴 한글 (자연스러운 영어) | Ctrl+Enter      | ⌘+Enter      |
+| 내가 쓴 한글 (자연스러운 영어) | Ctrl+Enter      | Control+Enter |
 
 키는 `chrome://extensions/shortcuts`에서 바꿀 수 있습니다. Mac의 Chrome은 확장 단축키의 Alt를 Option으로 읽습니다. Alt+D는 쓰지 않습니다. Windows와 Linux의 Chrome이 주소창에 쓰기 때문입니다.
 

@@ -140,4 +140,10 @@ describe('natural American English input', () => {
     expect(typed).not.toContain('natural-american');
     expect(typed).not.toContain('NATURAL_AMERICAN_TASK');
   });
+
+  it('rewrites with Control+Enter and does not take Command+Enter', () => {
+    expect(natural).toContain('isNaturalRewriteShortcut');
+    expect(natural).not.toContain('isTranslateShortcut');
+    expect(typed).toContain('isTranslateShortcut');
+  });
 });

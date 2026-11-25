@@ -95,7 +95,7 @@ Right-click the page without a selection to see the page menu. The selection men
 | Switch replaced text and bilingual text | Alt+B           | Option (⌥)+B |
 | Translate the selection                 | Alt+S           | Option (⌥)+S |
 | Translate typed text (on that page)     | Ctrl+Enter      | ⌘+Enter      |
-| My Korean, in natural English           | Ctrl+Enter      | ⌘+Enter      |
+| My Korean, in natural English           | Ctrl+Enter      | Control+Enter |
 
 Change the keys at `chrome://extensions/shortcuts`. Chrome reads Alt in an extension shortcut as Option on a Mac. Alt+D is not used, because Chrome on Windows and Linux uses it for the address bar.
 
