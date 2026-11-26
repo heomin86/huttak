@@ -331,6 +331,46 @@ describe('Control+Enter on a web page', () => {
     stop();
   });
 
+  it('rewrites again after the IME echo of the first composing Control+Enter', () => {
+    const { box, calls, stop } = composingField();
+    press(box, { key: 'Control', code: 'ControlLeft', ctrlKey: true });
+    press(box, { key: 'Enter', code: 'Enter', keyCode: 229, isComposing: true });
+    box.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '요' }));
+    const echo = press(box, { key: 'Enter', code: 'Enter', keyCode: 13 });
+    expect(echo.defaultPrevented).toBe(true);
+    expect(calls).toEqual(['안녕하세요']);
+
+    box.value = '감사합니다';
+    press(box, { key: 'Control', code: 'ControlLeft', ctrlKey: true });
+    press(box, { key: 'Enter', code: 'Enter', keyCode: 229, isComposing: true });
+    box.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '다' }));
+    expect(calls).toEqual(['안녕하세요', '감사합니다']);
+    const again = press(box, { key: 'Enter', code: 'Enter', keyCode: 13 });
+    expect(again.defaultPrevented).toBe(true);
+    expect(calls).toEqual(['안녕하세요', '감사합니다']);
+    stop();
+  });
+
+  it('drops a missed Control keyup so a later Enter stays with the page', () => {
+    const { box, calls, stop } = composingField();
+    press(box, { key: 'Control', code: 'ControlLeft', ctrlKey: true });
+    const typed = press(box, { key: 'a', code: 'KeyA' });
+    expect(typed.defaultPrevented).toBe(false);
+    const enter = press(box, { key: 'Enter', code: 'Enter' });
+    expect(enter.defaultPrevented).toBe(false);
+    expect(calls).toEqual([]);
+    stop();
+  });
+
+  it('does not rewrite the plain Enter that reveals a missed Control keyup', () => {
+    const { box, calls, stop } = composingField();
+    press(box, { key: 'Control', code: 'ControlLeft', ctrlKey: true });
+    const enter = press(box, { key: 'Enter', code: 'Enter' });
+    expect(enter.defaultPrevented).toBe(false);
+    expect(calls).toEqual([]);
+    stop();
+  });
+
   it('starts from keyup when the composing keydown never reported Control', () => {
     const { box, calls, stop } = composingField();
     const composing = press(box, {

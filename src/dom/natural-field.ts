@@ -305,6 +305,8 @@ export function installNaturalFieldShortcut(
   let armedTarget: EventTarget | null = null;
   /** This Control+Enter already requested one rewrite. */
   let started = false;
+  /** When `started` stops blocking the next gesture. The echo clears `swallowUntil` early. */
+  let startedUntil = 0;
   /**
    * After a composing Control+Enter, Chrome's Hangul IME commits the syllable and then
    * sends Enter again. On a Mac that second key often has no ctrlKey. It still inserts a
@@ -366,22 +368,51 @@ export function installNaturalFieldShortcut(
     swallowUntil = now() + HOLD_MS;
   };
 
+  const noteStarted = (): void => {
+    started = true;
+    startedUntil = now() + HOLD_MS;
+  };
+
+  const clearStarted = (): void => {
+    started = false;
+    startedUntil = 0;
+  };
+
   const expireHold = (): void => {
-    if (swallowUntil > 0 && now() > swallowUntil) {
-      swallowUntil = 0;
-      started = false;
-    }
+    const t = now();
+    if (swallowUntil > 0 && t > swallowUntil) swallowUntil = 0;
+    if (started && t > startedUntil) clearStarted();
+  };
+
+  const eventReportsControl = (event: KeyboardEvent): boolean =>
+    event.ctrlKey === true ||
+    (typeof event.getModifierState === 'function' && event.getModifierState('Control') === true);
+
+  /**
+   * A composing keydown can omit ctrlKey while Control is still down. A normal key does
+   * not, so a missed Control keyup is dropped from the event itself. `controlIsDown`
+   * still trusts the latch and must not be used for this check.
+   */
+  const releaseStaleControl = (event: KeyboardEvent): void => {
+    if (composingKey(event) || eventReportsControl(event)) return;
+    controlDown = false;
   };
 
   const settle = (key: NaturalRewriteKey, target: EventTarget | null): boolean => {
+    const wasArmed = armed;
     const next = reduceNaturalRewriteKey(armed, key);
-    if (next.armed && !armed) armedTarget = target;
+    if (next.armed && !wasArmed) {
+      armedTarget = target;
+      // A new composing Control+Enter. The previous rewrite must not block its
+      // compositionend, even when the echo already cleared the swallow timer.
+      clearStarted();
+    }
     armed = next.armed;
     if (!next.run) return false;
     const from = key.type === 'keydown' ? target : armedTarget;
     armedTarget = null;
     const ran = start(from);
-    if (ran) started = true;
+    if (ran) noteStarted();
     return ran;
   };
 
@@ -392,18 +423,13 @@ export function installNaturalFieldShortcut(
       return;
     }
     expireHold();
-    // A masked IME keydown lies about modifiers. A normal key does not, so drop a latch
-    // left behind when Control's own keyup was missed.
-    if (!composingKey(event) && !controlIsDown(event)) controlDown = false;
+    releaseStaleControl(event);
 
     if (swallowUntil > 0 && now() <= swallowUntil && isFollowUpEnter(event)) {
       // The latch must not turn the IME's plain echo into a new shortcut. Only a key
       // that itself reports Control is a later Control+Enter.
-      const reportsControl =
-        event.ctrlKey === true ||
-        (typeof event.getModifierState === 'function' && event.getModifierState('Control'));
       const shortcut =
-        reportsControl &&
+        eventReportsControl(event) &&
         isNaturalRewriteShortcut({
           key: event.key,
           ctrlKey: true,
@@ -422,13 +448,13 @@ export function installNaturalFieldShortcut(
           event.stopPropagation();
           return;
         }
-        started = false;
+        clearStarted();
         armed = false;
         armedTarget = null;
       } else {
         swallowUntil = 0;
         if (!started && armed && start(event.target ?? armedTarget)) {
-          started = true;
+          noteStarted();
           armed = false;
           armedTarget = null;
         }
@@ -456,6 +482,7 @@ export function installNaturalFieldShortcut(
       controlDown = false;
       return;
     }
+    releaseStaleControl(event);
     expireHold();
     if (started) return;
     if (armed) {
@@ -468,7 +495,7 @@ export function installNaturalFieldShortcut(
     const key = keyOf('keyup', event);
     if (!isNaturalRewriteShortcut(key)) return;
     if (start(event.target)) {
-      started = true;
+      noteStarted();
       holdFollowUp();
     }
   };
@@ -478,7 +505,7 @@ export function installNaturalFieldShortcut(
     // Don't go through the reducer here. A failed read must leave the gesture armed so
     // the echo Enter or keyup can start once the syllable is actually in the field.
     if (!start(armedTarget)) return;
-    started = true;
+    noteStarted();
     armed = false;
     armedTarget = null;
     holdFollowUp();
