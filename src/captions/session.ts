@@ -41,8 +41,9 @@ export interface CaptionStart {
  * those nodes alone and draws one phrase at a time. A phrase stays up until its
  * successor has a translation, so a word the player reveals early cannot replace
  * the Korean line. It runs only while page translation is on, and only on
- * YouTube and X. X without a caption file is reported; burned-in subtitles and
- * speech recognition are out of scope.
+ * YouTube and X. On X, a video with no caption file stays quiet: no bar on the
+ * timeline or the post. Burned-in subtitles and speech recognition are out of
+ * scope.
  */
 export class CaptionSession {
   private generation = 0;
@@ -116,12 +117,13 @@ export class CaptionSession {
     const site = captionSite(this.href());
     if (!site) return;
     this.overlay = new CaptionOverlay(this.doc, site === 'youtube');
-    this.showStatus(this.labels.translating);
+    // The status bar sits on the post. On X it stays hidden until a caption file exists.
+    if (site !== 'x') this.showStatus(this.labels.translating);
 
     const video = await this.waitForVideo(signal);
     if (!this.alive(generation, signal)) return;
     if (!video) {
-      this.showStatus(this.labels.missing);
+      this.noteMissing();
       return;
     }
     this.attach(video);
@@ -136,7 +138,7 @@ export class CaptionSession {
     }
     if (!this.alive(generation, signal)) return;
     if (!discovered || (discovered.tracks.length === 0 && discovered.inline.length === 0)) {
-      this.showStatus(this.labels.missing);
+      this.noteMissing();
       return;
     }
 
@@ -152,7 +154,8 @@ export class CaptionSession {
         (tracks.length > 0 || discovered.inline.length > 0) &&
         tracks.every((item) => primaryLanguage(item.languageCode) === target) &&
         discovered.inline.every((item) => primaryLanguage(item.languageCode) === target);
-      this.showStatus(same ? this.labels.sameLanguage : this.labels.missing);
+      if (same) this.showStatus(this.labels.sameLanguage);
+      else this.noteMissing();
       return;
     }
 
@@ -198,6 +201,18 @@ export class CaptionSession {
 
   private showStatus(text: string): void {
     this.overlay?.show(text, this.video?.getBoundingClientRect() ?? null, 'status');
+  }
+
+  /**
+   * YouTube still says when there is nothing to translate. On X that same line
+   * is a dark bar across the timeline and the post, so the overlay stays blank.
+   */
+  private noteMissing(): void {
+    if (captionSite(this.href()) === 'x') {
+      this.overlay?.show('', this.video?.getBoundingClientRect() ?? null, 'hidden');
+      return;
+    }
+    this.showStatus(this.labels.missing);
   }
 
   private render(): void {
