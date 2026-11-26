@@ -153,6 +153,17 @@ function notifyInput(field: HTMLElement, english: string): void {
 }
 
 /**
+ * Hangul IME on Chrome confirms the syllable and then delivers Enter again, which adds a
+ * newline in a textarea. That newline is not something the reader typed between snapshot
+ * and result.
+ */
+function imeTrailingNewline(current: string, raw: string): number {
+  if (current === `${raw}\n`) return 1;
+  if (current === `${raw}\r\n`) return 2;
+  return 0;
+}
+
+/**
  * Writes the English back only when the field still holds the same Korean. Returns false
  * when the reader kept typing, so a late result does not wipe the newer text.
  */
@@ -167,12 +178,14 @@ export function applyNaturalFieldResult(draft: NaturalFieldDraft, english: strin
   const stillFocused = focusedEditableField(field.ownerDocument.activeElement) === field;
 
   if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+    const newline = draft.mode === 'value' ? imeTrailingNewline(field.value, draft.raw) : 0;
     const start = draft.mode === 'selection' ? draft.selectionStart : 0;
-    const end = draft.mode === 'selection' ? draft.selectionEnd : field.value.length;
+    const end = draft.mode === 'selection' ? draft.selectionEnd : field.value.length - newline;
     if (field.value.slice(start, end) !== draft.raw) return false;
-    const expected = field.value.slice(0, start) + next + field.value.slice(end);
+    const replaceEnd = newline > 0 ? field.value.length : end;
+    const expected = field.value.slice(0, start) + next + field.value.slice(replaceEnd);
     if (stillFocused) {
-      field.setSelectionRange(start, end);
+      field.setSelectionRange(start, replaceEnd);
       if (insertAsTyping(field, next) && field.value === expected) return true;
     }
     if (field.value !== expected && field.value.slice(start, end) !== draft.raw) return false;
@@ -183,7 +196,7 @@ export function applyNaturalFieldResult(draft: NaturalFieldDraft, english: strin
       const caret = draft.selectionStart + next.length;
       field.setSelectionRange(caret, caret);
     } else {
-      if (field.value !== draft.raw) return false;
+      if (field.value.slice(0, field.value.length - newline) !== draft.raw) return false;
       setNativeValue(field, next);
       field.setSelectionRange(next.length, next.length);
     }
@@ -198,7 +211,10 @@ export function applyNaturalFieldResult(draft: NaturalFieldDraft, english: strin
     if (draft.range.startContainer.isConnected && draft.range.toString() === draft.raw) {
       target = draft.range;
     }
-  } else if (plainText(field) === draft.raw) {
+  } else if (
+    imeTrailingNewline(plainText(field), draft.raw) > 0 ||
+    plainText(field) === draft.raw
+  ) {
     target = doc.createRange();
     target.selectNodeContents(field);
   }
@@ -219,7 +235,9 @@ export function applyNaturalFieldResult(draft: NaturalFieldDraft, english: strin
     return true;
   }
 
-  if (plainText(field) !== draft.raw) return false;
+  if (plainText(field) !== draft.raw && imeTrailingNewline(plainText(field), draft.raw) === 0) {
+    return false;
+  }
   field.replaceChildren(field.ownerDocument.createTextNode(next));
   notifyInput(field, next);
   return true;
@@ -285,25 +303,75 @@ export function installNaturalFieldShortcut(
   /** Control+Enter came while the last Hangul syllable was still composing. */
   let armed = false;
   let armedTarget: EventTarget | null = null;
+  /** This Control+Enter already requested one rewrite. */
+  let started = false;
   /**
-   * After a rewrite that started on compositionend, the IME can deliver the same
-   * Control+Enter again as a plain keydown. That one is swallowed, so it neither starts a
-   * second rewrite nor reaches the page as "send".
+   * After a composing Control+Enter, Chrome's Hangul IME commits the syllable and then
+   * sends Enter again. On a Mac that second key often has no ctrlKey. It still inserts a
+   * newline or submits the form, so the field no longer matches the Korean we snapshotted
+   * and the English is thrown away. Swallow that one Enter.
    */
   let swallowUntil = 0;
+  /**
+   * Physical Control. The composing keydown on a Mac can omit ctrlKey while this key is
+   * already down, so the shortcut never arms and compositionend has nothing to finish.
+   */
+  let controlDown = false;
   const now = (): number => doc.defaultView?.performance.now() ?? Date.now();
+  const HOLD_MS = 400;
+
+  const isControlKey = (event: KeyboardEvent): boolean =>
+    event.key === 'Control' || event.code === 'ControlLeft' || event.code === 'ControlRight';
+
+  const composingKey = (event: KeyboardEvent): boolean =>
+    event.isComposing === true ||
+    event.keyCode === 229 ||
+    event.key === 'Process' ||
+    event.key === 'Unidentified';
+
+  const controlIsDown = (event: KeyboardEvent): boolean => {
+    if (event.altKey === true || event.shiftKey === true || event.metaKey === true) return false;
+    if (event.ctrlKey === true) return true;
+    if (typeof event.getModifierState === 'function' && event.getModifierState('Control')) {
+      return true;
+    }
+    return controlDown && !isControlKey(event);
+  };
 
   const keyOf = (type: 'keydown' | 'keyup', event: KeyboardEvent): NaturalRewriteKey => ({
     type,
     key: event.key,
     code: event.code,
     keyCode: event.keyCode,
-    ctrlKey: event.ctrlKey,
+    ctrlKey: controlIsDown(event),
     metaKey: event.metaKey,
     altKey: event.altKey,
     shiftKey: event.shiftKey,
     isComposing: event.isComposing,
   });
+
+  const isFollowUpEnter = (event: KeyboardEvent): boolean => {
+    if (event.isComposing === true || event.altKey === true || event.shiftKey === true)
+      return false;
+    if (event.metaKey === true) return false;
+    return (
+      event.key === 'Enter' ||
+      event.code === 'Enter' ||
+      event.code === 'NumpadEnter' ||
+      event.keyCode === 13
+    );
+  };
+
+  const holdFollowUp = (): void => {
+    swallowUntil = now() + HOLD_MS;
+  };
+
+  const expireHold = (): void => {
+    if (swallowUntil > 0 && now() > swallowUntil) {
+      swallowUntil = 0;
+      started = false;
+    }
+  };
 
   const settle = (key: NaturalRewriteKey, target: EventTarget | null): boolean => {
     const next = reduceNaturalRewriteKey(armed, key);
@@ -312,33 +380,108 @@ export function installNaturalFieldShortcut(
     if (!next.run) return false;
     const from = key.type === 'keydown' ? target : armedTarget;
     armedTarget = null;
-    return start(from);
+    const ran = start(from);
+    if (ran) started = true;
+    return ran;
   };
 
   const onKeyDown = (event: Event): void => {
     if (!(event instanceof KeyboardEvent) || event.repeat) return;
-    if (swallowUntil > 0 && isNaturalRewriteShortcut(event)) {
-      const swallow = now() <= swallowUntil;
-      swallowUntil = 0;
-      if (swallow) {
+    if (isControlKey(event)) {
+      controlDown = true;
+      return;
+    }
+    expireHold();
+    // A masked IME keydown lies about modifiers. A normal key does not, so drop a latch
+    // left behind when Control's own keyup was missed.
+    if (!composingKey(event) && !controlIsDown(event)) controlDown = false;
+
+    if (swallowUntil > 0 && now() <= swallowUntil && isFollowUpEnter(event)) {
+      // The latch must not turn the IME's plain echo into a new shortcut. Only a key
+      // that itself reports Control is a later Control+Enter.
+      const reportsControl =
+        event.ctrlKey === true ||
+        (typeof event.getModifierState === 'function' && event.getModifierState('Control'));
+      const shortcut =
+        reportsControl &&
+        isNaturalRewriteShortcut({
+          key: event.key,
+          ctrlKey: true,
+          metaKey: event.metaKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          isComposing: event.isComposing,
+        });
+      // A later Control+Enter is its own gesture. An English field keeps the key, the
+      // same way a committed Control+Enter does. The IME's echo is the Enter that no
+      // longer reports Control.
+      if (shortcut) {
+        swallowUntil = 0;
+        if (started && readNaturalFieldDraft(doc, event.target)) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        started = false;
+        armed = false;
+        armedTarget = null;
+      } else {
+        swallowUntil = 0;
+        if (!started && armed && start(event.target ?? armedTarget)) {
+          started = true;
+          armed = false;
+          armedTarget = null;
+        }
+        // Swallow only an echo of a rewrite that is already running. An English field,
+        // and a syllable that is not in the field yet, keep the key.
+        if (!started) return;
         event.preventDefault();
         event.stopPropagation();
         return;
       }
     }
-    if (!settle(keyOf('keydown', event), event.target)) return;
+
+    const ran = settle(keyOf('keydown', event), event.target);
+    // The window is only for the Enter the IME sends after a composing Control+Enter.
+    // A key that was already committed must not eat the reader's next line break.
+    if (armed) holdFollowUp();
+    if (!ran) return;
     event.preventDefault();
     event.stopPropagation();
   };
 
   const onKeyUp = (event: Event): void => {
-    if (!(event instanceof KeyboardEvent) || !armed) return;
-    if (settle(keyOf('keyup', event), event.target)) swallowUntil = now() + 400;
+    if (!(event instanceof KeyboardEvent)) return;
+    if (isControlKey(event)) {
+      controlDown = false;
+      return;
+    }
+    expireHold();
+    if (started) return;
+    if (armed) {
+      if (settle(keyOf('keyup', event), event.target)) holdFollowUp();
+      return;
+    }
+    // The composing keydown never reported Control, and no compositionend ran the
+    // rewrite. The keyup still has Control: that is the shortcut.
+    if (event.isComposing === true) return;
+    const key = keyOf('keyup', event);
+    if (!isNaturalRewriteShortcut(key)) return;
+    if (start(event.target)) {
+      started = true;
+      holdFollowUp();
+    }
   };
 
   const onCompositionEnd = (): void => {
-    if (!armed) return;
-    if (settle({ type: 'compositionend' }, null)) swallowUntil = now() + 400;
+    if (started || !armed) return;
+    // Don't go through the reducer here. A failed read must leave the gesture armed so
+    // the echo Enter or keyup can start once the syllable is actually in the field.
+    if (!start(armedTarget)) return;
+    started = true;
+    armed = false;
+    armedTarget = null;
+    holdFollowUp();
   };
 
   /** Starts a rewrite of the field the key was in. False when there is nothing to rewrite. */

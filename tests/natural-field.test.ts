@@ -101,6 +101,18 @@ describe('writing the English back', () => {
     expect(box.value).toBe('Hello running late');
   });
 
+  it('replaces Korean when the IME appended one newline after the snapshot', () => {
+    document.body.innerHTML = '<textarea></textarea>';
+    const box = document.querySelector('textarea')!;
+    box.value = '오늘 늦어요';
+    box.focus();
+    const draft = readNaturalFieldDraft(document, box)!;
+    box.value = `${draft.raw}\n`;
+
+    expect(applyNaturalFieldResult(draft, 'Running late.')).toBe(true);
+    expect(box.value).toBe('Running late.');
+  });
+
   it('does not overwrite Korean the reader changed while the rewrite was in flight', () => {
     document.body.innerHTML = '<textarea></textarea>';
     const box = document.querySelector('textarea')!;
@@ -271,6 +283,74 @@ describe('Control+Enter on a web page', () => {
     press(box, { key: 'Enter', metaKey: true, isComposing: true });
     box.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '요' }));
     expect(calls).toEqual([]);
+    stop();
+  });
+
+  it('rewrites when Control+Enter ends composition and the echo Enter has no ctrlKey', async () => {
+    document.body.innerHTML = '<textarea></textarea>';
+    const box = document.querySelector('textarea')!;
+    box.value = '안녕하세요';
+    const calls: string[] = [];
+    let finish: (value: string) => void = () => {};
+    const stop = installNaturalFieldShortcut(document, {
+      labels,
+      rewrite: (text) => {
+        calls.push(text);
+        return new Promise<string>((resolve) => {
+          finish = resolve;
+        });
+      },
+    });
+    box.addEventListener('keydown', (event) => {
+      if (event.defaultPrevented || event.isComposing) return;
+      if (event.key === 'Enter' || event.keyCode === 13) box.value += '\n';
+    });
+
+    press(box, { key: 'Control', code: 'ControlLeft', ctrlKey: true });
+    const composing = press(box, {
+      key: 'Enter',
+      code: 'Enter',
+      keyCode: 229,
+      isComposing: true,
+    });
+    expect(composing.defaultPrevented).toBe(false);
+    expect(calls).toEqual([]);
+
+    box.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '요' }));
+    expect(calls).toEqual(['안녕하세요']);
+
+    const echo = press(box, { key: 'Enter', code: 'Enter', keyCode: 13 });
+    expect(echo.defaultPrevented).toBe(true);
+    expect(calls).toEqual(['안녕하세요']);
+    expect(box.value).toBe('안녕하세요');
+
+    finish('Hello');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(box.value).toBe('Hello');
+    stop();
+  });
+
+  it('starts from keyup when the composing keydown never reported Control', () => {
+    const { box, calls, stop } = composingField();
+    const composing = press(box, {
+      key: 'Enter',
+      code: 'Enter',
+      keyCode: 229,
+      isComposing: true,
+    });
+    expect(composing.defaultPrevented).toBe(false);
+    box.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '요' }));
+    expect(calls).toEqual([]);
+    box.dispatchEvent(
+      new KeyboardEvent('keyup', {
+        bubbles: true,
+        key: 'Enter',
+        code: 'Enter',
+        ctrlKey: true,
+      }),
+    );
+    expect(calls).toEqual(['안녕하세요']);
     stop();
   });
 });
