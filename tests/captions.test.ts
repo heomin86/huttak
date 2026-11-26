@@ -55,6 +55,23 @@ async function waitForCaption(predicate: (host: HTMLElement) => boolean): Promis
   throw new Error(`caption overlay was ${captionHost()?.dataset.caption ?? 'absent'}`);
 }
 
+function sessionWithNoCaptions(site: 'x' | 'youtube'): CaptionSession {
+  return new CaptionSession(
+    document,
+    {
+      discover: async () => ({ site, tracks: [], resourceUrls: [], inline: [] }),
+      readCaption: async () => null,
+    },
+    { translate: fakeTranslate },
+    labels,
+  );
+}
+
+/** Settled empty-caption state: the bar was cleared, not merely created. */
+async function waitForQuietCaption(): Promise<HTMLElement> {
+  return waitForCaption((host) => host.dataset.state === 'hidden' && host.style.display === 'none');
+}
+
 afterEach(() => {
   document.querySelector('sakutto-caption')?.remove();
   document.querySelector('[data-sakutto-caption-hide]')?.remove();
@@ -372,23 +389,44 @@ describe('caption session', () => {
     session.stop();
   });
 
-  it('says when the video has no caption file', async () => {
+  it('shows nothing on an X post when the video has no caption file', async () => {
     setPage('https://x.com/someone/status/1234567890');
     document.body.append(document.createElement('video'));
-    const session = new CaptionSession(
-      document,
-      {
-        discover: async () => ({ site: 'x', tracks: [], resourceUrls: [], inline: [] }),
-        readCaption: async () => null,
-      },
-      { translate: fakeTranslate },
-      labels,
-    );
+    const session = sessionWithNoCaptions('x');
+
+    session.start(start);
+    const host = await waitForQuietCaption();
+    expect(host.dataset.caption).toBe('');
+    expect(host.dataset.state).toBe('hidden');
+    expect(host.style.display).toBe('none');
+    expect(document.querySelector('[data-sakutto-caption-hide]')).toBeNull();
+    session.stop();
+  });
+
+  it('shows nothing on the X timeline when the video has no caption file', async () => {
+    setPage('https://x.com/home');
+    document.body.append(document.createElement('video'));
+    const session = sessionWithNoCaptions('x');
+
+    session.start(start);
+    const host = await waitForQuietCaption();
+    expect(host.dataset.caption).toBe('');
+    expect(host.dataset.state).toBe('hidden');
+    expect(host.style.display).toBe('none');
+    expect(document.body.textContent).not.toContain('missing');
+    expect(document.querySelector('[data-sakutto-caption-hide]')).toBeNull();
+    session.stop();
+  });
+
+  it('says on YouTube when the video has no caption file', async () => {
+    setPage('https://www.youtube.com/watch?v=abcdefghijk');
+    document.body.append(document.createElement('video'));
+    const session = sessionWithNoCaptions('youtube');
 
     session.start(start);
     const host = await waitForCaption((item) => item.dataset.caption === 'missing');
     expect(host.dataset.state).toBe('status');
-    expect(document.querySelector('[data-sakutto-caption-hide]')).toBeNull();
+    expect(host.style.display).not.toBe('none');
     session.stop();
   });
 
