@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { loadExtension } from './extension';
+import { LANGUAGE_MARKER } from './page';
 
 const EXTENSION_ID_PATTERN = /^[a-p]{32}$/;
 
@@ -21,7 +22,7 @@ test.describe('built extension', () => {
       for (const path of pages) {
         const page = await extension.context.newPage();
         await page.goto(`chrome-extension://${extension.extensionId}/${path}`);
-        await expect(page.locator('h1')).toHaveText('Sakutto - Local AI translation');
+        await expect(page.locator('h1')).toHaveText('Huttak - Local AI translation');
         if (path === 'onboarding.html') {
           await expect(page.getByRole('checkbox')).toHaveCount(0);
           await expect(
@@ -78,7 +79,11 @@ test.describe('built extension', () => {
     try {
       const page = await extension.context.newPage();
       await page.goto(`chrome-extension://${extension.extensionId}/sample.html?to=ja`);
-      await expect(page.locator('article h1')).toContainText('§ja§Morning at the station');
+      // `?to=ja` shows the Korean sample (the partner of that target) and translates it.
+      // The language tag is removed, so the heading stays the sample text.
+      await expect(page.locator('article h1')).toHaveAttribute('data-sakutto-engine', 'plamo');
+      await expect(page.locator('article h1')).toHaveText('역의 아침');
+      await expect(page.locator('article h1')).not.toContainText(LANGUAGE_MARKER);
       await expect(page.locator('article[data-sample="ja"]')).toHaveCount(0);
       await page.close();
     } finally {
@@ -94,7 +99,7 @@ test.describe('built extension', () => {
       for (const path of pages) {
         const page = await extension.context.newPage();
         await page.goto(`chrome-extension://${extension.extensionId}/${path}`);
-        await expect(page.locator('h1')).toHaveText('Sakutto - ローカルAI翻訳');
+        await expect(page.locator('h1')).toHaveText('Huttak - ローカルAI翻訳');
         if (path === 'onboarding.html') {
           await expect(page.getByRole('checkbox')).toHaveCount(0);
           await expect(

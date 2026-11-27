@@ -3,7 +3,12 @@ import {
   buildNaturalAmericanPlamoPrompt,
   cleanNaturalAmericanOutput,
 } from '../prompt/natural-american';
-import { buildTranslationPrompt, cleanModelOutput, sanitizeGlossary } from '../prompt/pfml3';
+import {
+  buildTranslationPrompt,
+  cleanModelOutput,
+  presentModelOutput,
+  sanitizeGlossary,
+} from '../prompt/pfml3';
 import { ChunkStream } from '../queue/chunk-stream';
 import { JobScheduler, type ScheduledHandle } from '../queue/scheduler';
 import { DEFAULT_PLAN_CONFIG, planWork, type PlanConfig, type WorkItem } from '../text/plan';
@@ -131,7 +136,11 @@ export class InBrowserEngine implements IdentifiedEngine {
         signal,
         (delta) => stream.push({ id: segment.id, textDelta: delta, engine: this.kind }),
       );
-      stream.push({ id: segment.id, final: cleanModelOutput(output), engine: this.kind });
+      stream.push({
+        id: segment.id,
+        final: presentModelOutput(output, segment.text),
+        engine: this.kind,
+      });
       return;
     }
 
@@ -262,7 +271,7 @@ export class InBrowserEngine implements IdentifiedEngine {
         });
         restart = false;
       });
-      const cleaned = cleanModelOutput(output);
+      const cleaned = presentModelOutput(output, segment.text);
       // An empty retry sends no delta to restart with, and an empty final paints nothing, so
       // a line that was shown would keep the misaligned text. The source replaces it instead.
       const final = cleaned.length === 0 && index < alreadyShown ? segment.text : cleaned;

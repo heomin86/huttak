@@ -3,7 +3,12 @@ import { CachingEngine } from '@/engine/cache/caching-engine';
 import { TranslationCache } from '@/engine/cache/cache';
 import { buildTranslationCacheKey, glossaryVersion } from '@/engine/cache/key';
 import { MemoryTranslationCacheStore } from '@/engine/cache/store';
-import type { TranslateOptions } from '@/engine/types';
+import { commitPiece } from '@/engine/text/commit';
+import {
+  NATURAL_AMERICAN_TASK,
+  type IdentifiedEngine,
+  type TranslateOptions,
+} from '@/engine/types';
 import { MAX_GLOSSARY_ENTRIES } from '@/shared/glossary';
 import { collectChunks, fakeEngine } from './support/fakes';
 
@@ -208,5 +213,77 @@ describe('CachingEngine', () => {
     );
 
     expect(inner.calls).toBe(2);
+  });
+
+  it('replays a tag-only PLaMo result as the source and keeps a real empty result empty', async () => {
+    const source = 'The meeting starts at nine.';
+    const blank = 'Already empty, no tag.';
+    const calls = { count: 0 };
+    const inner: IdentifiedEngine = {
+      kind: 'plamo',
+      async *translate(segments) {
+        calls.count += 1;
+        for (const segment of segments) {
+          // What PLaMo yields after cleanup when the model emitted only a language tag:
+          // the tag may still be in the raw stream, and `final` is empty.
+          if (segment.text === source) {
+            yield { id: segment.id, textDelta: '§ko§', engine: 'plamo' };
+          }
+          yield { id: segment.id, final: '', engine: 'plamo' };
+        }
+      },
+    };
+    const engine = new CachingEngine(
+      inner,
+      new TranslationCache(new MemoryTranslationCacheStore()),
+      'plamo-0.8b',
+    );
+
+    const first = await collectChunks(engine.translate([{ id: 'a', text: source }], options()));
+    const firstStream = first.map((chunk) => chunk.textDelta ?? '').join('');
+    const firstFinal = first.find((chunk) => chunk.final !== undefined)?.final ?? '';
+    expect(commitPiece(source, firstStream, firstFinal)).toBe(source);
+
+    const replay = await collectChunks(engine.translate([{ id: 'a', text: source }], options()));
+    expect(calls.count).toBe(1);
+    expect(replay).toEqual([{ id: 'a', final: source, engine: 'plamo' }]);
+    expect(commitPiece(source, '', replay[0]?.final ?? '')).toBe(source);
+
+    const firstBlank = await collectChunks(engine.translate([{ id: 'b', text: blank }], options()));
+    expect(commitPiece(blank, '', firstBlank.at(-1)?.final ?? 'x')).toBe('');
+    const replayBlank = await collectChunks(
+      engine.translate([{ id: 'b', text: blank }], options()),
+    );
+    expect(calls.count).toBe(2);
+    expect(replayBlank).toEqual([{ id: 'b', final: '', engine: 'plamo' }]);
+    expect(commitPiece(blank, '', replayBlank[0]?.final ?? 'x')).toBe('');
+  });
+
+  it('does not cache a tag-only natural rewrite as the Korean source', async () => {
+    const korean = '기다려 주셔서 감사합니다.';
+    const calls = { count: 0 };
+    const inner: IdentifiedEngine = {
+      kind: 'plamo',
+      async *translate(segments) {
+        calls.count += 1;
+        for (const segment of segments) {
+          yield { id: segment.id, textDelta: '§en§', engine: 'plamo' };
+          yield { id: segment.id, final: '', engine: 'plamo' };
+        }
+      },
+    };
+    const engine = new CachingEngine(
+      inner,
+      new TranslationCache(new MemoryTranslationCacheStore()),
+      'plamo-0.8b',
+    );
+    const request = options({ src: 'ko', tgt: 'en', task: NATURAL_AMERICAN_TASK });
+
+    const first = await collectChunks(engine.translate([{ id: 'n', text: korean }], request));
+    expect(first.at(-1)?.final).toBe('');
+    const replay = await collectChunks(engine.translate([{ id: 'n', text: korean }], request));
+    expect(calls.count).toBe(1);
+    expect(replay).toEqual([{ id: 'n', final: '', engine: 'plamo' }]);
+    expect(commitPiece(korean, '', replay[0]?.final ?? 'x')).toBe('');
   });
 });

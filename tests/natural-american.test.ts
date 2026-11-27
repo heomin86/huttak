@@ -78,6 +78,12 @@ describe('natural American English prompts', () => {
     );
     expect(cleanNaturalAmericanOutput("'I can't make it.'")).toBe("I can't make it.");
     expect(cleanNaturalAmericanOutput('「Thanks for waiting.」')).toBe('Thanks for waiting.');
+    expect(cleanNaturalAmericanOutput('§en§Thanks for waiting.')).toBe('Thanks for waiting.');
+    expect(cleanNaturalAmericanOutput('§ko§Translation: "Thanks for waiting."')).toBe(
+      'Thanks for waiting.',
+    );
+    expect(cleanNaturalAmericanOutput('§en§')).toBe('');
+    expect(cleanNaturalAmericanOutput('See § 3 of the act.')).toBe('See § 3 of the act.');
   });
 
   it('keeps dialogue that opens with a quote and later closes another', () => {

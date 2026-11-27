@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appendDelta, commitPiece, dropRetranslation } from '@/engine/text/commit';
+import { appendDelta, commitPiece, dropRetranslation, finalForCache } from '@/engine/text/commit';
 import { joinPreservingBreaks, splitKeepingLineBreaks } from '@/engine/text/sentences';
 
 describe('stream commit', () => {
@@ -20,6 +20,33 @@ describe('stream commit', () => {
   it('keeps a real tail the final text dropped, and prefers final otherwise', () => {
     expect(commitPiece('Hello', '안녕하세요 끝', '안녕하세요')).toBe('안녕하세요 끝');
     expect(commitPiece('Hello', '짧은', '더 긴 최종 번역입니다')).toBe('더 긴 최종 번역입니다');
+  });
+
+  it('strips a language marker, including one in a kept tail, and leaves the source when that is all there was', () => {
+    const source = 'The meeting starts at nine.';
+    expect(commitPiece(source, '§ko§', '§ko§')).toBe(source);
+    expect(commitPiece(source, '§en§', '')).toBe(source);
+    expect(commitPiece(source, '', '§ja§')).toBe(source);
+    expect(
+      commitPiece(source, '§ko§회의는 9시에 시작합니다.', '§ko§회의는 9시에 시작합니다.'),
+    ).toBe('회의는 9시에 시작합니다.');
+    expect(commitPiece(source, '§en§Hello there.', '§en§Hello there.')).toBe('Hello there.');
+    expect(commitPiece('Hello', '안녕하세요 끝§en§', '안녕하세요')).toBe('안녕하세요 끝');
+    expect(commitPiece('Hello', '§ko§안녕하세요 끝', '안녕하세요')).toBe('안녕하세요 끝');
+    expect(commitPiece(source, 'See § 3 of the act.', 'See § 3 of the act.')).toBe(
+      'See § 3 of the act.',
+    );
+    expect(commitPiece(source, '', '')).toBe('');
+  });
+
+  it('stores a tag-only answer as the source and leaves a real empty answer empty', () => {
+    const source = 'The meeting starts at nine.';
+    expect(finalForCache(source, '§ko§', '')).toBe(source);
+    expect(finalForCache(source, '', '§en§')).toBe(source);
+    expect(finalForCache(source, '', '')).toBe('');
+    expect(finalForCache(source, '안녕', '안녕하세요')).toBe('안녕하세요');
+    expect(commitPiece(source, '', finalForCache(source, '§ko§', ''))).toBe(source);
+    expect(commitPiece(source, '', finalForCache(source, '', ''))).toBe('');
   });
 });
 

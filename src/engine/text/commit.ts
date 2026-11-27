@@ -1,3 +1,5 @@
+import { stripLanguageMarkers } from './language-marker';
+
 const REPEAT_CHARS = 24;
 
 /**
@@ -35,14 +37,46 @@ export function dropRetranslation(_source: string, output: string): string {
  * token limit or a short buffer dropped, and the stream still has those
  * characters. A stream that is longer only because it repeated the translation
  * is cut first, so the repeat does not win over `final`.
+ *
+ * Language tags are removed after that cut, including from a tail that is kept
+ * because `final` is only a prefix. The comparison uses the stripped strings, so
+ * a tag the cleanup already took off `final` cannot come back from the raw
+ * stream, and a tag in front of the stream cannot hide the tail. A result that
+ * is empty only because the tag was the whole answer returns the source. A
+ * result that was already empty stays empty, so a failed request can still
+ * report that it produced nothing.
  */
 export function commitPiece(source: string, streamed: string, finalText: string): string {
-  const cutStream = dropRetranslation(source, streamed).trim();
-  const cutFinal = dropRetranslation(source, finalText).trim();
-  if (cutFinal.length > 0 && cutStream.startsWith(cutFinal) && cutStream.length > cutFinal.length) {
-    return cutStream;
-  }
-  return cutFinal.length > 0 ? cutFinal : cutStream;
+  const rawStream = dropRetranslation(source, streamed).trim();
+  const rawFinal = dropRetranslation(source, finalText).trim();
+  const cutStream = stripLanguageMarkers(rawStream).trim();
+  const cutFinal = stripLanguageMarkers(rawFinal).trim();
+  const chosen =
+    cutFinal.length > 0 && cutStream.startsWith(cutFinal) && cutStream.length > cutFinal.length
+      ? cutStream
+      : cutFinal.length > 0
+        ? cutFinal
+        : cutStream;
+  if (chosen.length > 0) return chosen;
+  if (rawStream.length > 0 || rawFinal.length > 0) return source;
+  return '';
+}
+
+function textIsOnlyLanguageMarker(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && stripLanguageMarkers(trimmed).trim().length === 0;
+}
+
+/**
+ * The string a cache should keep for one finished segment. A real translation is
+ * stored as the engine sent it. A language tag that was the whole answer is stored
+ * as the source, so a later hit — an empty final and no deltas — still leaves the
+ * source. A result that was already empty stays empty.
+ */
+export function finalForCache(source: string, streamed: string, finalText: string): string {
+  if (stripLanguageMarkers(finalText).trim().length > 0) return finalText;
+  if (!textIsOnlyLanguageMarker(streamed) && !textIsOnlyLanguageMarker(finalText)) return finalText;
+  return source;
 }
 
 /** Spacing-insensitive key for "is this the translation we already painted?" */

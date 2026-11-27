@@ -1,4 +1,5 @@
 import { EngineError } from '../errors';
+import { stripLanguageMarkers } from '../text/language-marker';
 import type { Formality, GlossaryEntry } from '../types';
 
 export const PFML3 = {
@@ -109,11 +110,32 @@ export function buildTranslationPrompt(input: PromptInput): string {
   return `${prompt}${PFML3.msg}`;
 }
 
-export function cleanModelOutput(value: string): string {
+function cutModelOutput(value: string): string {
   let output = value;
   for (const marker of [PFML3.tag, BOS_TOKEN]) {
     const index = output.indexOf(marker);
     if (index !== -1) output = output.slice(0, index);
   }
-  return output.trim();
+  return output;
+}
+
+export function cleanModelOutput(value: string): string {
+  return stripLanguageMarkers(cutModelOutput(value)).trim();
+}
+
+/** The model answered with nothing but a language tag such as `§ko§`. */
+export function outputIsOnlyLanguageMarker(value: string): boolean {
+  const cut = cutModelOutput(value).trim();
+  return cut.length > 0 && stripLanguageMarkers(cut).trim().length === 0;
+}
+
+/**
+ * The text to show and to cache. A language tag that was the whole answer becomes
+ * the source, so a later replay does not look like a failed empty translation.
+ * An answer that was already empty stays empty.
+ */
+export function presentModelOutput(raw: string, source: string): string {
+  const cleaned = cleanModelOutput(raw);
+  if (cleaned.length > 0) return cleaned;
+  return outputIsOnlyLanguageMarker(raw) ? source : '';
 }

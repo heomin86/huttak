@@ -199,8 +199,10 @@ function installRecorder(input: RecorderInput): void {
       const block = owning(item.el);
       const engine = block.getAttribute('data-sakutto-engine');
       const pending = block.hasAttribute('data-sakutto-pending');
-      const changed = text.length > 0 && text !== item.original;
-      if (changed && engine !== null && !pending) {
+      // The fake engine's only edit is a language tag, and that tag is removed before the
+      // reader sees the block, so the finished text can match the source. The engine
+      // attribute is what shows the block was translated.
+      if (text.length > 0 && engine !== null && !pending) {
         if (item.doneMs === null) item.doneMs = atMs;
         done += 1;
       }
